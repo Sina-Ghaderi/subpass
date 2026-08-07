@@ -49,7 +49,6 @@ func (wintun *Adapter) StartSession(capacity uint32) (session Session, err error
 func (session Session) End() {
 	syscall.SyscallN(procWintunEndSession.Addr(), session.handle)
 	session.handle = 0
-	_ = session.handle
 }
 
 func (session Session) ReadWaitEvent() (handle windows.Handle) {
