@@ -40,12 +40,11 @@ type tunDevice struct {
 	readWait  windows.Handle
 	closed    atomic.Bool
 	running   sync.WaitGroup
-	tunName   string
+	name      string
 }
 
-func (tun *tunDevice) ID() uint64   { return tun.adaptor.LUID() }
-func (tun *tunDevice) Name() string { return tun.tunName }
-func WintunDriverVersion() string   { return wintun.Version() }
+func (tun *tunDevice) ID() uint64 { return tun.adaptor.LUID() }
+func WintunDriverVersion() string { return wintun.Version() }
 
 func openTunDevice(config *Config) (*tunDevice, error) {
 	dev, err := createTunDevice(config)
@@ -78,6 +77,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}
 
 	tun = &tunDevice{readWait: ssn.ReadWaitEvent()}
+	tun.name = config.Name
 	tun.adaptor = adapter
 	tun.session = ssn
 	return
@@ -118,6 +118,10 @@ func (tun *tunDevice) Write(b []byte) (int, error) {
 	tun.running.Add(1)
 	defer tun.running.Done()
 
+	if tun.closed.Load() {
+		return 0, fmt.Errorf("write: %w", os.ErrClosed)
+	}
+
 	_, lb, err := checkPacketLen(b)
 	if err != nil {
 		return 0, fmt.Errorf("write: %w", err)
@@ -125,10 +129,6 @@ func (tun *tunDevice) Write(b []byte) (int, error) {
 
 	if lb > wintun.PacketSizeMax {
 		return 0, errors.New("write: buffer size is too high")
-	}
-
-	if tun.closed.Load() {
-		return 0, fmt.Errorf("write: %w", os.ErrClosed)
 	}
 
 	packet, err := tun.session.AllocateSendPacket(lb)
@@ -185,6 +185,10 @@ func checkWintunConfig(config *Config) (err error) {
 	}
 
 	return
+}
+
+func (tun *tunDevice) Name() (name string, err error) {
+	return tun.name, err
 }
 
 // Destroy is a no-op on Windows.

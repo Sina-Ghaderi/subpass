@@ -1,7 +1,7 @@
 package subpass
 
 type Tun interface {
-	Name() string
+	Name() (string, error)
 	Read([]byte) (int, error)
 	Write([]byte) (int, error)
 	Close() error
