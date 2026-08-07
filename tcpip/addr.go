@@ -91,5 +91,9 @@ func IPv6TotalLen(b []byte) (int, error) {
 		return 0, ErrShortBuffer
 	}
 
+	if totalLen > int(^uint16(0)) {
+		return 0, errors.New("invalid ipv6 packet length")
+	}
+
 	return totalLen, nil
 }
