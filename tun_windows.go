@@ -191,5 +191,6 @@ func (tun *tunDevice) Name() (name string, err error) {
 	return tun.name, err
 }
 
-// Destroy is a no-op on Windows.
-func (tun *tunDevice) Destroy() error { return nil }
+func (tun *tunDevice) Destroy() error {
+	return errors.New("destroy: operation not supported on this platform")
+}
