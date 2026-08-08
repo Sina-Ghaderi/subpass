@@ -207,5 +207,5 @@ func (tun *tunDevice) Name() (name string, err error) {
 }
 
 func (tun *tunDevice) Destroy() error {
-	return errors.New("destroy: operation not supported on this platform")
+	return errors.New("operation not supported on this platform")
 }

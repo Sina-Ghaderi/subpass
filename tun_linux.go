@@ -190,8 +190,17 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 		return 0, fmt.Errorf("read: %w", err)
 	}
 
-	if _, _, err = checkPacketLen(b[:n]); err != nil {
+	if n > len(b) {
+		return 0, fmt.Errorf("read: invalid read of ip packet")
+	}
+
+	_, totalLen, err := checkPacketLen(b[:n])
+	if err != nil {
 		return 0, fmt.Errorf("read: %w", err)
+	}
+
+	if totalLen != n {
+		return 0, fmt.Errorf("read: invalid read of ip packet")
 	}
 
 	return n, err

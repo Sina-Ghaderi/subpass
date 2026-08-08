@@ -34,6 +34,10 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 		return 0, fmt.Errorf("read: short address family tag")
 	}
 
+	if n > len(buff) {
+		return 0, fmt.Errorf("read: invalid read of ip packet")
+	}
+
 	buff = buff[addrFamilyTagLen:n]
 	if len(b) < len(buff) {
 		return 0, fmt.Errorf("read: %w", ErrShortBuffer)

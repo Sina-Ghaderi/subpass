@@ -189,5 +189,5 @@ func getUtunIndex(config *Config) (int, error) {
 }
 
 func (tun *tunDevice) Destroy() error {
-	return errors.New("destroy: operation not supported on this platform")
+	return errors.New("operation not supported on this platform")
 }
