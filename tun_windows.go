@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/sina-ghaderi/subpass/internal/wintun"
+	"github.com/sina-ghaderi/subpass/tcpip"
 	"golang.org/x/sys/windows"
 )
 
@@ -96,12 +97,26 @@ retry:
 	packet, err := tun.session.ReceivePacket()
 	switch err {
 	case nil:
-		ncopy := copy(b, packet)
+		cp := copy(b, packet)
 		tun.session.ReleaseReceivePacket(packet)
-		if _, _, err = checkPacketLen(b[:ncopy]); err != nil {
+
+		totalLen, err := tcpip.TotalLen(packet)
+		if err != nil {
+			if err == tcpip.ErrShortBuffer {
+				return 0, fmt.Errorf("read: short read of ip packet")
+			}
 			return 0, fmt.Errorf("read: %w", err)
 		}
-		return ncopy, err
+
+		if totalLen != len(packet) {
+			return 0, fmt.Errorf("read: invalid read of ip packet")
+		}
+
+		if cp < len(packet) {
+			return 0, fmt.Errorf("read: %w", ErrShortBuffer)
+		}
+
+		return cp, err
 	case windows.ERROR_NO_MORE_ITEMS:
 		windows.WaitForSingleObject(tun.readWait, windows.INFINITE)
 		goto retry
@@ -134,9 +149,9 @@ func (tun *tunDevice) Write(b []byte) (int, error) {
 	packet, err := tun.session.AllocateSendPacket(lb)
 	switch err {
 	case nil:
-		ncopy := copy(packet, b[:lb])
+		cp := copy(packet, b[:lb])
 		tun.session.SendPacket(packet)
-		return ncopy, nil
+		return cp, nil
 	case windows.ERROR_HANDLE_EOF:
 		return 0, fmt.Errorf("write: %w", os.ErrClosed)
 	case windows.ERROR_BUFFER_OVERFLOW:

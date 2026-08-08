@@ -39,12 +39,19 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 		return 0, fmt.Errorf("read: %w", ErrShortBuffer)
 	}
 
-	cp := copy(b, buff)
-	if _, _, err = checkPacketLen(b[:cp]); err != nil {
+	totalLen, err := tcpip.TotalLen(buff)
+	if err != nil {
+		if err == tcpip.ErrShortBuffer {
+			return 0, fmt.Errorf("read: short read of ip packet")
+		}
 		return 0, fmt.Errorf("read: %w", err)
 	}
 
-	return cp, err
+	if totalLen != len(buff) {
+		return 0, fmt.Errorf("read: invalid read of ip packet")
+	}
+
+	return copy(b, buff), err
 }
 
 func (tun *tunDevice) Write(b []byte) (int, error) {
