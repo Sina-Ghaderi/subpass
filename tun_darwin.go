@@ -74,11 +74,16 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, fmt.Errorf("failed to open socket: %w", err)
 	}
 
+	defer func() {
+		if err != nil {
+			unix.Close(fd)
+		}
+	}()
+
 	var ctlInfo = new(unix.CtlInfo)
 	copy(ctlInfo.Name[:], []byte(appleUtunCtl))
 
 	if err = unix.IoctlCtlInfo(fd, ctlInfo); err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to create tunnel: %w", err)
 	}
 
@@ -86,7 +91,6 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	control.Unit = uint32(index) + 1
 
 	if err = unix.Connect(fd, control); err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to connect to socket: %w", err)
 	}
 
@@ -96,18 +100,15 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	)
 
 	if err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
 	}
 
 	iface, err := net.InterfaceByName(utunName)
 	if err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to get interface index: %w", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to put in nonblock: %w", err)
 	}
 
@@ -189,5 +190,9 @@ func getUtunIndex(config *Config) (int, error) {
 }
 
 func (tun *tunDevice) Destroy() error {
+	return errors.New("operation not supported on this platform")
+}
+
+func Destroy(uint64) error {
 	return errors.New("operation not supported on this platform")
 }

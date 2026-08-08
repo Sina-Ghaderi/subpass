@@ -6,7 +6,7 @@ import (
 	"github.com/sina-ghaderi/subpass/tcpip"
 )
 
-var ErrShortBuffer = errors.New("packet length exceeds buffer length")
+var ErrShortBuffer = errors.New("packet length exceeds user buffer")
 
 func checkPacketLen(b []byte) (uint8, int, error) {
 	var totalLen int

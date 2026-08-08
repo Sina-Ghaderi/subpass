@@ -1,4 +1,4 @@
-//go:build freebsd || netbsd || openbsd || darwin || dragonfly
+//go:build netbsd || openbsd || darwin || dragonfly || freebsd
 
 package subpass
 

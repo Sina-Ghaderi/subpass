@@ -64,9 +64,14 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
 	}
 
+	defer func() {
+		if err != nil {
+			unix.Close(fd)
+		}
+	}()
+
 	ifreq, err := unix.NewIfreq(config.Name)
 	if err != nil {
-		unix.Close(fd)
 		return tun, errors.New("interface name too long")
 	}
 
@@ -78,7 +83,6 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	ifreq.SetUint16(flags)
 
 	if err = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifreq); err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to create tunnel: %w", err)
 	}
 
@@ -89,19 +93,24 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = unix.IoctlSetInt(fd, unix.TUNSETPERSIST, value)
 	if err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to make tun persist: %w", err)
 	}
 
+	tunName := ifreq.Name()
+
+	defer func() {
+		if err != nil && value > 0 {
+			destroyByName(tunName)
+		}
+	}()
+
 	if err = tunDevicePermisstions(fd, config); err != nil {
-		unix.Close(fd)
 		return
 	}
 
 	inet, err := unix.Socket(unix.AF_INET,
 		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to open socket: %w", err)
 	}
 
@@ -109,12 +118,10 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = unix.IoctlIfreq(inet, unix.SIOCGIFINDEX, ifreq)
 	if err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to get interface index: %w", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		unix.Close(fd)
 		return tun, fmt.Errorf("failed to set nonblock mode: %w", err)
 	}
 
@@ -316,4 +323,77 @@ func tunDevicePermisstions(fd int, config *Config) (err error) {
 	}
 
 	return
+}
+
+func destroyByName(name string) error {
+	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
+	if err != nil {
+		return fmt.Errorf("open netlink socket: %w", err)
+	}
+	defer unix.Close(fd)
+
+	lsa := &unix.SockaddrNetlink{Family: unix.AF_NETLINK}
+	if err := unix.Bind(fd, lsa); err != nil {
+		return fmt.Errorf("bind netlink socket: %w", err)
+	}
+
+	nameBytes := append([]byte(name), 0)
+	attrLen := 4 + len(nameBytes)
+	attrAlignedLen := (attrLen + 3) &^ 3
+
+	nlmsgLen := unix.SizeofNlMsghdr + unix.SizeofIfInfomsg + attrAlignedLen
+	buff := make([]byte, nlmsgLen)
+
+	nlmsg := unix.NlMsghdr{
+		Len:   uint32(nlmsgLen),
+		Type:  unix.RTM_DELLINK,
+		Flags: unix.NLM_F_REQUEST | unix.NLM_F_ACK,
+		Seq:   1,
+	}
+	*(*unix.NlMsghdr)(unsafe.Pointer(&buff[0])) = nlmsg
+	offset := unix.SizeofNlMsghdr
+
+	ifinfo := unix.IfInfomsg{
+		Family: unix.AF_UNSPEC,
+	}
+	*(*unix.IfInfomsg)(unsafe.Pointer(&buff[offset])) = ifinfo
+	offset += unix.SizeofIfInfomsg
+
+	rtAttr := unix.RtAttr{
+		Len:  uint16(attrLen),
+		Type: unix.IFLA_IFNAME,
+	}
+	*(*unix.RtAttr)(unsafe.Pointer(&buff[offset])) = rtAttr
+
+	copy(buff[offset+4:], nameBytes)
+	if err := unix.Sendto(fd, buff, 0, lsa); err != nil {
+		return fmt.Errorf("send netlink delete request: %w", err)
+	}
+
+	rb := make([]byte, 4096)
+	n, _, err := unix.Recvfrom(fd, rb, 0)
+	if err != nil {
+		return fmt.Errorf("receive netlink reply: %w", err)
+	}
+
+	if n < unix.SizeofNlMsghdr {
+		return fmt.Errorf("receive netlink reply: short read header")
+	}
+
+	replyHeader := (*unix.NlMsghdr)(unsafe.Pointer(&rb[0]))
+	if replyHeader.Type != unix.NLMSG_ERROR {
+		return nil
+	}
+
+	if n < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
+		return fmt.Errorf("receive netlink reply: short read error message")
+	}
+
+	nlerr := (*unix.NlMsgerr)(unsafe.Pointer(&rb[unix.SizeofNlMsghdr]))
+	if nlerr.Error != 0 {
+		err = unix.Errno(-nlerr.Error)
+		err = fmt.Errorf("netlink rejected deletion: %w", err)
+	}
+
+	return err
 }
