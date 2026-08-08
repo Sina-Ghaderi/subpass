@@ -136,7 +136,7 @@ func (tun *tunDevice) Name() (name string, err error) {
 	sysconn, err := tun.file.SyscallConn()
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", err)
+			"name: unable to get tun name: %w", err)
 	}
 
 	var ifreq unix.Ifreq
@@ -147,12 +147,12 @@ func (tun *tunDevice) Name() (name string, err error) {
 
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", err)
+			"name: unable to get tun name: %w", err)
 	}
 
 	if opErr != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", opErr)
+			"name: unable to get tun name: %w", opErr)
 	}
 
 	return ifreq.Name(), nil
