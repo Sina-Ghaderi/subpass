@@ -50,9 +50,9 @@ func TotalLen(b []byte) (int, error) {
 
 	if ipv == IPv4 {
 		return IPv4TotalLen(b)
+	} else {
+		return IPv6TotalLen(b)
 	}
-
-	return IPv6TotalLen(b)
 }
 
 func IPv4TotalLen(b []byte) (int, error) {
@@ -74,7 +74,6 @@ func IPv4TotalLen(b []byte) (int, error) {
 		totalLen = 0
 	case len(b) < int(totalLen):
 		err = ErrShortBuffer
-		totalLen = 0
 	}
 
 	return int(totalLen), err
@@ -88,7 +87,7 @@ func IPv6TotalLen(b []byte) (int, error) {
 
 	totalLen := FixIPv6HdrLen + int(be16(b[4:6]))
 	if len(b) < totalLen {
-		return 0, ErrShortBuffer
+		return totalLen, ErrShortBuffer
 	}
 
 	if totalLen > int(^uint16(0)) {
