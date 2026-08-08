@@ -18,10 +18,12 @@ const tunModuleCharPath = "/dev/net/tun"
 const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
 
 type Config struct {
-	Name        string
-	Permissions *Permissions
-	Persist     bool
-	MultiQueue  bool
+	Name           string
+	Permissions    *Permissions
+	Persist        bool
+	MultiQueue     bool
+	EnableOffloads bool
+	UseVhostNet    bool
 }
 
 type Permissions struct {
@@ -34,7 +36,7 @@ type tunDevice struct {
 	writeMutex sync.Mutex
 	file       *os.File
 	closed     atomic.Bool
-	ifindex    uint64
+	ifIndex    uint64
 }
 
 func defaltOSparms() Config { return Config{} }
@@ -100,7 +102,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
 		unix.Close(fd)
-		return tun, fmt.Errorf("failed to open inet socket: %w", err)
+		return tun, fmt.Errorf("failed to open socket: %w", err)
 	}
 
 	defer unix.Close(inet)
@@ -108,7 +110,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	err = unix.IoctlIfreq(inet, unix.SIOCGIFINDEX, ifreq)
 	if err != nil {
 		unix.Close(fd)
-		return nil, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("failed to get interface index: %w", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
@@ -117,7 +119,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}
 
 	tun = &tunDevice{}
-	tun.ifindex = uint64(ifreq.Uint32())
+	tun.ifIndex = uint64(ifreq.Uint32())
 	tun.file = os.NewFile(uintptr(fd), tunModuleCharPath)
 	return
 }
@@ -131,9 +133,9 @@ func (tun *tunDevice) Name() (name string, err error) {
 	}
 
 	var ifreq unix.Ifreq
-	var ioctlErr error
+	var opErr error
 	err = sysconn.Control(func(fd uintptr) {
-		ioctlErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
+		opErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
 	})
 
 	if err != nil {
@@ -141,16 +143,16 @@ func (tun *tunDevice) Name() (name string, err error) {
 			"name: failed to get tun name: %w", err)
 	}
 
-	if ioctlErr != nil {
+	if opErr != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", ioctlErr)
+			"name: failed to get tun name: %w", opErr)
 	}
 
 	return ifreq.Name(), nil
 }
 
 func (tun *tunDevice) Destroy() error {
-	if err := Destroy(tun.ifindex); err != nil {
+	if err := Destroy(tun.ifIndex); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
@@ -217,7 +219,7 @@ func (tun *tunDevice) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (tun *tunDevice) ID() uint64 { return tun.ifindex }
+func (tun *tunDevice) ID() uint64 { return tun.ifIndex }
 
 func Destroy(ifindex uint64) error {
 
