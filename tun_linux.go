@@ -93,7 +93,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = unix.IoctlSetInt(fd, unix.TUNSETPERSIST, value)
 	if err != nil {
-		return tun, fmt.Errorf("failed to make tun persist: %w", err)
+		return tun, fmt.Errorf("failed to make interface persistent: %w", err)
 	}
 
 	tunName := ifreq.Name()
@@ -122,7 +122,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		return tun, fmt.Errorf("failed to set nonblock mode: %w", err)
+		return tun, fmt.Errorf("failed to put tunnel in nonblock mode: %w", err)
 	}
 
 	tun = &tunDevice{}
@@ -136,7 +136,7 @@ func (tun *tunDevice) Name() (name string, err error) {
 	sysconn, err := tun.file.SyscallConn()
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: unable to get tun name: %w", err)
+			"name: unable to get tunnel name: %w", err)
 	}
 
 	var ifreq unix.Ifreq
@@ -147,12 +147,12 @@ func (tun *tunDevice) Name() (name string, err error) {
 
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: unable to get tun name: %w", err)
+			"name: unable to get tunnel name: %w", err)
 	}
 
 	if opErr != nil {
 		return name, fmt.Errorf(
-			"name: unable to get tun name: %w", opErr)
+			"name: unable to get tunnel name: %w", opErr)
 	}
 
 	return ifreq.Name(), nil

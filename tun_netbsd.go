@@ -67,7 +67,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	stat, err := tun.file.Stat()
 	if err != nil {
-		return tun, fmt.Errorf("unable to get tun name: %w", err)
+		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
 	}
 
 	stat_t := stat.Sys().(*syscall.Stat_t)

@@ -109,7 +109,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		return tun, fmt.Errorf("failed to put in nonblock: %w", err)
+		return tun, fmt.Errorf("failed to put tunnel in nonblock mode: %w", err)
 	}
 
 	tun = new(tunDevice)
@@ -125,7 +125,7 @@ func (tun *tunDevice) Name() (name string, err error) {
 	sysconn, err := tun.file.SyscallConn()
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", err)
+			"name: failed to get tunnel name: %w", err)
 	}
 
 	var opErr error
@@ -139,12 +139,12 @@ func (tun *tunDevice) Name() (name string, err error) {
 
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", err)
+			"name: failed to get tunnel name: %w", err)
 	}
 
 	if opErr != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tun name: %w", opErr)
+			"name: failed to get tunnel name: %w", opErr)
 	}
 
 	return name, err

@@ -68,13 +68,13 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	tunName, err := getTunName(tun.file)
 	if err != nil {
-		return tun, fmt.Errorf("unable to get tun name: %w", err)
+		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
 	}
 
 	if !config.Persist {
 		err = setTunTransient(tun.file)
 		if err != nil {
-			return tun, fmt.Errorf("failed to make tun transient: %w", err)
+			return tun, fmt.Errorf("failed to make tunnel transient: %w", err)
 		}
 	} else {
 		defer func() {
@@ -99,7 +99,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	err = becomeTunPID(tun.file)
 	if err != nil {
 		return tun, fmt.Errorf(
-			"failed to set controlling tun process: %w", err)
+			"failed to set controlling tunnel process: %w", err)
 	}
 
 	netif, err = net.InterfaceByName(tunName)
@@ -127,7 +127,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 func (tun *tunDevice) Name() (string, error) {
 	name, err := getTunName(tun.file)
 	if err != nil {
-		return name, fmt.Errorf("name: unable to get tun name: %w", err)
+		return name, fmt.Errorf("name: unable to get tunnel name: %w", err)
 	}
 
 	return name, err
