@@ -35,7 +35,7 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 	}
 
 	if n > len(buff) {
-		return 0, fmt.Errorf("read: invalid read of ip packet")
+		return 0, fmt.Errorf("read: read: invalid ip packet length")
 	}
 
 	buff = buff[addrFamilyTagLen:n]
@@ -46,13 +46,13 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 	totalLen, err := tcpip.TotalLen(buff)
 	if err != nil {
 		if err == tcpip.ErrShortBuffer {
-			return 0, fmt.Errorf("read: short read of ip packet")
+			return 0, fmt.Errorf("read: short ip packet")
 		}
 		return 0, fmt.Errorf("read: %w", err)
 	}
 
 	if totalLen != len(buff) {
-		return 0, fmt.Errorf("read: invalid read of ip packet")
+		return 0, fmt.Errorf("read: invalid ip packet length")
 	}
 
 	return copy(b, buff), err

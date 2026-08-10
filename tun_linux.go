@@ -83,7 +83,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	ifreq.SetUint16(flags)
 
 	if err = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifreq); err != nil {
-		return tun, fmt.Errorf("failed to create tunnel: %w", err)
+		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
 	var value int
@@ -93,7 +93,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = unix.IoctlSetInt(fd, unix.TUNSETPERSIST, value)
 	if err != nil {
-		return tun, fmt.Errorf("failed to make interface persistent: %w", err)
+		return tun, fmt.Errorf("set persist mode: %w", err)
 	}
 
 	tunName := ifreq.Name()
@@ -111,18 +111,18 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	inet, err := unix.Socket(unix.AF_INET,
 		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
-		return tun, fmt.Errorf("failed to open socket: %w", err)
+		return tun, fmt.Errorf("open socket: %w", err)
 	}
 
 	defer unix.Close(inet)
 
 	err = unix.IoctlIfreq(inet, unix.SIOCGIFINDEX, ifreq)
 	if err != nil {
-		return tun, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		return tun, fmt.Errorf("failed to put tunnel in nonblock mode: %w", err)
+		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
 	tun = &tunDevice{}
@@ -136,7 +136,7 @@ func (tun *tunDevice) Name() (name string, err error) {
 	sysconn, err := tun.file.SyscallConn()
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: unable to get tunnel name: %w", err)
+			"name: get tunnel name: %w", err)
 	}
 
 	var ifreq unix.Ifreq
@@ -147,12 +147,12 @@ func (tun *tunDevice) Name() (name string, err error) {
 
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: unable to get tunnel name: %w", err)
+			"name: get tunnel name: %w", err)
 	}
 
 	if opErr != nil {
 		return name, fmt.Errorf(
-			"name: unable to get tunnel name: %w", opErr)
+			"name: get tunnel name: %w", opErr)
 	}
 
 	return ifreq.Name(), nil
@@ -198,7 +198,7 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 	}
 
 	if n > len(b) {
-		return 0, fmt.Errorf("read: invalid read of ip packet")
+		return 0, fmt.Errorf("read: invalid ip packet length")
 	}
 
 	_, totalLen, err := checkPacketLen(b[:n])
@@ -207,7 +207,7 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 	}
 
 	if totalLen != n {
-		return 0, fmt.Errorf("read: invalid read of ip packet")
+		return 0, fmt.Errorf("read: invalid ip packet length")
 	}
 
 	return n, err
@@ -245,13 +245,13 @@ func Destroy(ifindex uint64) error {
 
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
 	if err != nil {
-		return fmt.Errorf("open netlink socket: %w", err)
+		return fmt.Errorf("open socket: %w", err)
 	}
 	defer unix.Close(fd)
 
 	lsa := &unix.SockaddrNetlink{Family: unix.AF_NETLINK}
 	if err := unix.Bind(fd, lsa); err != nil {
-		return fmt.Errorf("bind netlink socket: %w", err)
+		return fmt.Errorf("bind socket: %w", err)
 	}
 
 	nlmsgLen := unix.SizeofNlMsghdr + unix.SizeofIfInfomsg
@@ -283,7 +283,7 @@ func Destroy(ifindex uint64) error {
 	}
 
 	if n < unix.SizeofNlMsghdr {
-		return fmt.Errorf("receive netlink reply: short read header")
+		return fmt.Errorf("receive netlink reply: short header")
 	}
 
 	replyHeader := (*unix.NlMsghdr)(unsafe.Pointer(&rb[0]))
@@ -292,13 +292,13 @@ func Destroy(ifindex uint64) error {
 	}
 
 	if n < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
-		return fmt.Errorf("receive netlink reply: short read error message")
+		return fmt.Errorf("receive netlink reply: short error message")
 	}
 
 	nlerr := (*unix.NlMsgerr)(unsafe.Pointer(&rb[unix.SizeofNlMsghdr]))
 	if nlerr.Error != 0 {
 		err = unix.Errno(-nlerr.Error)
-		err = fmt.Errorf("netlink rejected deletion: %w", err)
+		err = fmt.Errorf("netlink reject deletion: %w", err)
 	}
 
 	return err
@@ -314,12 +314,12 @@ func tunDevicePermisstions(fd int, config *Config) (err error) {
 
 	err = unix.IoctlSetInt(fd, unix.TUNSETOWNER, int(owner))
 	if err != nil {
-		return fmt.Errorf("unable to set tunnel owner: %w", err)
+		return fmt.Errorf("set tunnel owner: %w", err)
 	}
 
 	err = unix.IoctlSetInt(fd, unix.TUNSETGROUP, int(group))
 	if err != nil {
-		return fmt.Errorf("unable to set tunnel group: %w", err)
+		return fmt.Errorf("set tunnel group: %w", err)
 	}
 
 	return
@@ -328,13 +328,13 @@ func tunDevicePermisstions(fd int, config *Config) (err error) {
 func destroyByName(name string) error {
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
 	if err != nil {
-		return fmt.Errorf("open netlink socket: %w", err)
+		return fmt.Errorf("open socket: %w", err)
 	}
 	defer unix.Close(fd)
 
 	lsa := &unix.SockaddrNetlink{Family: unix.AF_NETLINK}
 	if err := unix.Bind(fd, lsa); err != nil {
-		return fmt.Errorf("bind netlink socket: %w", err)
+		return fmt.Errorf("bind socket: %w", err)
 	}
 
 	nameBytes := append([]byte(name), 0)
@@ -377,7 +377,7 @@ func destroyByName(name string) error {
 	}
 
 	if n < unix.SizeofNlMsghdr {
-		return fmt.Errorf("receive netlink reply: short read header")
+		return fmt.Errorf("receive netlink reply: short header")
 	}
 
 	replyHeader := (*unix.NlMsghdr)(unsafe.Pointer(&rb[0]))
@@ -386,13 +386,13 @@ func destroyByName(name string) error {
 	}
 
 	if n < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
-		return fmt.Errorf("receive netlink reply: short read error message")
+		return fmt.Errorf("receive netlink reply: short error message")
 	}
 
 	nlerr := (*unix.NlMsgerr)(unsafe.Pointer(&rb[unix.SizeofNlMsghdr]))
 	if nlerr.Error != 0 {
 		err = unix.Errno(-nlerr.Error)
-		err = fmt.Errorf("netlink rejected deletion: %w", err)
+		err = fmt.Errorf("netlink reject deletion: %w", err)
 	}
 
 	return err

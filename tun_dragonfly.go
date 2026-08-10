@@ -56,7 +56,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	netif, err := net.InterfaceByName(config.Name)
 	if netif != nil {
-		return tun, fmt.Errorf("failed to create tunnel: %w", os.ErrExist)
+		return tun, fmt.Errorf("create tunnel: %w", os.ErrExist)
 	}
 
 	tun = new(tunDevice)
@@ -67,7 +67,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	tunName, err := getTunName(tun.file)
 	if err != nil {
-		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
+		return tun, fmt.Errorf("get tunnel name: %w", err)
 	}
 
 	defer func() {
@@ -78,25 +78,25 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = setTunIFHeadMode(tun.file)
 	if err != nil {
-		return tun, fmt.Errorf("failed to set ifhead mode: %w", err)
+		return tun, fmt.Errorf("set ifhead mode: %w", err)
 	}
 
 	if !config.PTPMode {
 		err = setTunBroadcastMode(tun.file)
 		if err != nil {
-			return tun, fmt.Errorf("failed to set broadcast mode: %w", err)
+			return tun, fmt.Errorf("set broadcast mode: %w", err)
 		}
 	}
 
 	err = becomeTunPID(tun.file)
 	if err != nil {
 		return tun, fmt.Errorf(
-			"failed to set controlling tunnel process: %w", err)
+			"set controlling tunnel process: %w", err)
 	}
 
 	netif, err = net.InterfaceByName(tunName)
 	if err != nil {
-		return tun, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	tun.ifIndex = uint64(netif.Index)
@@ -107,8 +107,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = setTunName(tunName, config.Name)
 	if err != nil {
-		return tun, fmt.Errorf(
-			"failed to rename %s to %s: %w",
+		return tun, fmt.Errorf("rename %s to %s: %w",
 			tunName, config.Name, err,
 		)
 	}
@@ -119,7 +118,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 func (tun *tunDevice) Name() (string, error) {
 	name, err := getTunName(tun.file)
 	if err != nil {
-		return name, fmt.Errorf("name: unable to get tunnel name: %w", err)
+		return name, fmt.Errorf("name: get tunnel name: %w", err)
 	}
 
 	return name, err
@@ -131,7 +130,7 @@ func setTunName(oldName, newName string) error {
 		unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0,
 	)
 	if err != nil {
-		return fmt.Errorf("open unix socket: %w", err)
+		return fmt.Errorf("open socket: %w", err)
 	}
 
 	defer unix.Close(confd)
@@ -197,7 +196,7 @@ func Destroy(ifindex uint64) error {
 
 	ifi, err := net.InterfaceByIndex(int(ifindex))
 	if err != nil {
-		return fmt.Errorf("failed to get interface index: %w", err)
+		return fmt.Errorf("get interface index: %w", err)
 	}
 
 	name := ifi.Name
@@ -210,7 +209,7 @@ func destroyByName(name string) error {
 	const sockType = unix.SOCK_DGRAM | unix.SOCK_CLOEXEC
 	fd, err := unix.Socket(unix.AF_INET, sockType, 0)
 	if err != nil {
-		return fmt.Errorf("open unix socket: %w", err)
+		return fmt.Errorf("open socket: %w", err)
 	}
 
 	defer unix.Close(fd)
@@ -224,7 +223,7 @@ func destroyByName(name string) error {
 		uintptr(unsafe.Pointer(&ifr[0])),
 	)
 	if errno != 0 {
-		return fmt.Errorf("iface destroy request: %w", errno)
+		return fmt.Errorf("interface destroy request: %w", errno)
 	}
 	return err
 }

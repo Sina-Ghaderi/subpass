@@ -71,7 +71,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	fd, err := socketCloexec(
 		unix.AF_SYSTEM, unix.SOCK_DGRAM, appleSYSPROTO_CONTROL)
 	if err != nil {
-		return tun, fmt.Errorf("failed to open socket: %w", err)
+		return tun, fmt.Errorf("open socket: %w", err)
 	}
 
 	defer func() {
@@ -84,14 +84,14 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	copy(ctlInfo.Name[:], []byte(appleUtunCtl))
 
 	if err = unix.IoctlCtlInfo(fd, ctlInfo); err != nil {
-		return tun, fmt.Errorf("failed to create tunnel: %w", err)
+		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
 	control := &unix.SockaddrCtl{ID: ctlInfo.Id}
 	control.Unit = uint32(index) + 1
 
 	if err = unix.Connect(fd, control); err != nil {
-		return tun, fmt.Errorf("failed to connect to socket: %w", err)
+		return tun, fmt.Errorf("connect socket: %w", err)
 	}
 
 	const UTUN_OPT_IFNAME = 2
@@ -100,16 +100,16 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	)
 
 	if err != nil {
-		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
+		return tun, fmt.Errorf("get tunnel name: %w", err)
 	}
 
 	iface, err := net.InterfaceByName(utunName)
 	if err != nil {
-		return tun, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		return tun, fmt.Errorf("failed to put tunnel in nonblock mode: %w", err)
+		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
 	tun = new(tunDevice)
@@ -125,7 +125,7 @@ func (tun *tunDevice) Name() (name string, err error) {
 	sysconn, err := tun.file.SyscallConn()
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tunnel name: %w", err)
+			"name: get tunnel name: %w", err)
 	}
 
 	var opErr error
@@ -139,12 +139,12 @@ func (tun *tunDevice) Name() (name string, err error) {
 
 	if err != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tunnel name: %w", err)
+			"name: get tunnel name: %w", err)
 	}
 
 	if opErr != nil {
 		return name, fmt.Errorf(
-			"name: failed to get tunnel name: %w", opErr)
+			"name: get tunnel name: %w", opErr)
 	}
 
 	return name, err

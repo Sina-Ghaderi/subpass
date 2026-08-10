@@ -94,12 +94,11 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	_, err = unix.IoctlSetStrioctlRetInt(dataFd, unix.I_STR, &strioctl)
 	if err != nil {
-		return tun, fmt.Errorf("failed to create tunnel: %w", err)
+		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
 	if ppa != skppa {
-		err = fmt.Errorf("failed to create tunnel: ppa mismatch")
-		return tun, err
+		return tun, fmt.Errorf("create tunnel: ppa mismatch")
 	}
 
 	tun.linkFile, err = os.OpenFile(tunModuleCharPath, tunOpenMode, 0)
@@ -111,12 +110,12 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	const modName = "ip"
 	err = unix.IoctlSetString(linkFd, unix.I_PUSH, modName)
 	if err != nil {
-		return tun, fmt.Errorf("failed to push tunnel to ip: %w", err)
+		return tun, fmt.Errorf("push tunnel to ip: %w", err)
 	}
 
 	err = unix.IoctlSetPointerInt(linkFd, unix.IF_UNITSEL, skppa)
 	if err != nil {
-		return tun, fmt.Errorf("unable to set tunnel ppa: %w", err)
+		return tun, fmt.Errorf("set tunnel ppa: %w", err)
 	}
 
 	var tunLinkReq = unix.I_LINK
@@ -127,7 +126,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	ipFd, muxid := int(ipFile.Fd()), 0
 	muxid, err = unix.IoctlSetIntRetInt(ipFd, tunLinkReq, linkFd)
 	if err != nil {
-		return tun, fmt.Errorf("failed to link tunnel: %w", err)
+		return tun, fmt.Errorf("link tunnel: %w", err)
 	}
 
 	var lifreq unix.Lifreq
@@ -136,7 +135,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = unix.IoctlLifreq(ipFd, unix.SIOCSLIFMUXID, &lifreq)
 	if err != nil {
-		return tun, fmt.Errorf("failed to set link muxid: %w", err)
+		return tun, fmt.Errorf("set link muxid: %w", err)
 	}
 
 	if tunLinkReq == unix.I_PLINK {
@@ -149,7 +148,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	iface, err := net.InterfaceByName(config.Name)
 	if err != nil {
-		return tun, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	tun.ifIndex = uint64(iface.Index)
@@ -173,11 +172,11 @@ func (tun *tunDevice) Close() error {
 	}
 
 	if err1 != nil {
-		return fmt.Errorf("close: closing data file: %w", err1)
+		return fmt.Errorf("close: close data file: %w", err1)
 	}
 
 	if err2 != nil {
-		return fmt.Errorf("close: closing link file: %w", err2)
+		return fmt.Errorf("close: close link file: %w", err2)
 	}
 
 	return nil
@@ -253,7 +252,7 @@ func (tun *tunDevice) readPacket(b []byte) (int, error) {
 	totalLen, err = tcpip.TotalLen(tun.unread)
 	if err != nil {
 		if err == tcpip.ErrShortBuffer {
-			return 0, errors.New("short read of ip packet")
+			return 0, errors.New("short ip packet")
 		}
 		return 0, err
 	}
@@ -284,14 +283,14 @@ func destroyByName(name string) error {
 
 	err = unix.IoctlLifreq(ipFileFd, unix.SIOCGLIFMUXID, &lifreq)
 	if err != nil {
-		return fmt.Errorf("failed to get link muxid: %w", err)
+		return fmt.Errorf("get link muxid: %w", err)
 	}
 
 	ipMuxid := *(*int32)(unsafe.Pointer(&lifreq.Lifru[0]))
 
 	err = unix.IoctlSetInt(ipFileFd, unix.I_PUNLINK, int(ipMuxid))
 	if err != nil {
-		return fmt.Errorf("failed to unlink tunnel: %w", err)
+		return fmt.Errorf("unlink tunnel: %w", err)
 	}
 
 	return nil
@@ -302,7 +301,7 @@ func (tun *tunDevice) Name() (name string, err error) {
 	iface, err := net.InterfaceByIndex(int(tun.ifIndex))
 	if err != nil {
 		return name,
-			fmt.Errorf("name: unable to get tunnel name: %w", err)
+			fmt.Errorf("name: get tunnel name: %w", err)
 	}
 
 	name = iface.Name
@@ -324,7 +323,7 @@ func Destroy(ifindex uint64) error {
 
 	ifi, err := net.InterfaceByIndex(int(ifindex))
 	if err != nil {
-		return fmt.Errorf("failed to get interface index: %w", err)
+		return fmt.Errorf("get interface index: %w", err)
 	}
 
 	name := ifi.Name

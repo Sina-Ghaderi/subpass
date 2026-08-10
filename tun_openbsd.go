@@ -65,7 +65,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	stat, err := tun.file.Stat()
 	if err != nil {
-		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
+		return tun, fmt.Errorf("get tunnel name: %w", err)
 	}
 
 	stat_t := stat.Sys().(*syscall.Stat_t)
@@ -73,7 +73,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	iface, err := net.InterfaceByName(tun.name)
 	if err != nil {
-		return tun, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	tun.ifIndex = uint64(iface.Index)

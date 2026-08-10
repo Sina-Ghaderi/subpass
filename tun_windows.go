@@ -67,14 +67,14 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	if err != nil {
 		adapter, err = wintun.CreateAdapter(config.Name, config.Type, config.GUID)
 		if err != nil {
-			return tun, fmt.Errorf("failed to create tunnel: %w", err)
+			return tun, fmt.Errorf("create tunnel: %w", err)
 		}
 	}
 
 	ssn, err := adapter.StartSession(config.RingCapacity)
 	if err != nil {
 		adapter.Close()
-		return tun, fmt.Errorf("failed to start tunnel session: %w", err)
+		return tun, fmt.Errorf("start tunnel session: %w", err)
 	}
 
 	tun = &tunDevice{readWait: ssn.ReadWaitEvent()}
@@ -103,13 +103,13 @@ retry:
 		totalLen, err := tcpip.TotalLen(packet)
 		if err != nil {
 			if err == tcpip.ErrShortBuffer {
-				return 0, fmt.Errorf("read: short read of ip packet")
+				return 0, fmt.Errorf("read: short ip packet")
 			}
 			return 0, fmt.Errorf("read: %w", err)
 		}
 
 		if totalLen != len(packet) {
-			return 0, fmt.Errorf("read: invalid read of ip packet")
+			return 0, fmt.Errorf("read: invalid ip packet length")
 		}
 
 		if cp < len(packet) {
@@ -143,7 +143,7 @@ func (tun *tunDevice) Write(b []byte) (int, error) {
 	}
 
 	if lb > wintun.PacketSizeMax {
-		return 0, errors.New("write: buffer size is too high")
+		return 0, errors.New("write: buffer size too large")
 	}
 
 	packet, err := tun.session.AllocateSendPacket(lb)

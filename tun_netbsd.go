@@ -67,7 +67,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	stat, err := tun.file.Stat()
 	if err != nil {
-		return tun, fmt.Errorf("unable to get tunnel name: %w", err)
+		return tun, fmt.Errorf("get tunnel name: %w", err)
 	}
 
 	stat_t := stat.Sys().(*syscall.Stat_t)
@@ -81,14 +81,14 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	iface, err := net.InterfaceByName(tun.name)
 	if err != nil {
-		return tun, fmt.Errorf("failed to get interface index: %w", err)
+		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	tun.ifIndex = uint64(iface.Index)
 
 	err = setTunIFHeadMode(tun.file)
 	if err != nil {
-		return tun, fmt.Errorf("failed to set ifhead mode: %w", err)
+		return tun, fmt.Errorf("set ifhead mode: %w", err)
 	}
 
 	if config.PTPMode {
@@ -97,7 +97,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = setTunBroadcastMode(tun.file)
 	if err != nil {
-		return tun, fmt.Errorf("failed to set broadcast mode: %w", err)
+		return tun, fmt.Errorf("set broadcast mode: %w", err)
 	}
 
 	return
@@ -208,7 +208,7 @@ func Destroy(ifindex uint64) error {
 
 	ifi, err := net.InterfaceByIndex(int(ifindex))
 	if err != nil {
-		return fmt.Errorf("failed to get interface index: %w", err)
+		return fmt.Errorf("get interface index: %w", err)
 	}
 
 	name := ifi.Name
@@ -232,7 +232,7 @@ func destroyByName(name string) error {
 
 	fd, err := unix.Socket(unix.AF_INET, sockType, 0)
 	if err != nil {
-		return fmt.Errorf("open unix socket: %w", err)
+		return fmt.Errorf("open socket: %w", err)
 	}
 
 	defer unix.Close(fd)
@@ -246,7 +246,7 @@ func destroyByName(name string) error {
 		uintptr(unsafe.Pointer(&ifr[0])),
 	)
 	if errno != 0 {
-		return fmt.Errorf("iface destroy request: %w", errno)
+		return fmt.Errorf("interface destroy request: %w", errno)
 	}
 
 	return nil
