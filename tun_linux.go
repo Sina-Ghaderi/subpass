@@ -41,7 +41,19 @@ type tunDevice struct {
 
 func defaltOSparms() Config { return Config{} }
 
-func openTunDevice(config *Config) (*tunDevice, error) {
+func openTunDevice(config *Config) (Tun, error) {
+
+	switch {
+	case config.EnableOffloads:
+		return openOffloadTun(config)
+	case config.UseVhostNet:
+		// TODO:
+	}
+
+	return openGenericTun(config)
+}
+
+func openGenericTun(config *Config) (*tunDevice, error) {
 
 	dev, err := createTunDevice(config)
 	if err == nil {

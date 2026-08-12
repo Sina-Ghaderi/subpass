@@ -1,0 +1,275 @@
+//go:build linux
+
+package subpass
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"sync"
+	"sync/atomic"
+
+	"github.com/sina-ghaderi/subpass/internal/virtio/offload"
+	"github.com/sina-ghaderi/subpass/tcpip"
+	"golang.org/x/sys/unix"
+)
+
+const tcpOffloads = unix.TUN_F_CSUM | unix.TUN_F_TSO4 | unix.TUN_F_TSO6
+const udpOffloads = unix.TUN_F_USO4 | unix.TUN_F_USO6
+
+type tunOffload struct {
+	readMutex  sync.Mutex
+	writeMutex sync.Mutex
+	file       *os.File
+	gso        *offload.VirtioGso
+	gro        *offload.VirtioGro
+	closed     atomic.Bool
+	ifIndex    uint64
+}
+
+func openOffloadTun(config *Config) (*tunOffload, error) {
+	dev, err := createTunOffload(config)
+	if err == nil {
+		return dev, err
+	}
+
+	err = fmt.Errorf("create device: %w", err)
+	if dev != nil && dev.file != nil {
+		dev.file.Close()
+	}
+
+	dev = nil
+	return dev, err
+}
+
+func createTunOffload(config *Config) (tun *tunOffload, err error) {
+
+	if config.EnableOffloads && config.UseVhostNet {
+		return nil, fmt.Errorf("offloads cannot be used with vhost-net")
+	}
+
+	fd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
+	if err != nil {
+		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
+	}
+
+	defer func() {
+		if err != nil {
+			unix.Close(fd)
+		}
+	}()
+
+	ifreq, err := unix.NewIfreq(config.Name)
+	if err != nil {
+		return tun, errors.New("interface name too long")
+	}
+
+	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN | unix.IFF_VNET_HDR)
+	if config.MultiQueue {
+		flags |= unix.IFF_MULTI_QUEUE
+	}
+
+	ifreq.SetUint16(flags)
+
+	if err = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifreq); err != nil {
+		return tun, fmt.Errorf("create tunnel: %w", err)
+	}
+
+	var value int
+	if config.Persist {
+		value++
+	}
+
+	err = unix.IoctlSetInt(fd, unix.TUNSETPERSIST, value)
+	if err != nil {
+		return tun, fmt.Errorf("set persist mode: %w", err)
+	}
+
+	tunName := ifreq.Name()
+
+	defer func() {
+		if err != nil && value > 0 {
+			destroyByName(tunName)
+		}
+	}()
+
+	if err = tunDevicePermisstions(fd, config); err != nil {
+		return
+	}
+
+	inet, err := unix.Socket(unix.AF_INET,
+		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return tun, fmt.Errorf("open socket: %w", err)
+	}
+
+	defer unix.Close(inet)
+
+	err = unix.IoctlIfreq(inet, unix.SIOCGIFINDEX, ifreq)
+	if err != nil {
+		return tun, fmt.Errorf("get interface index: %w", err)
+	}
+
+	if err = unix.SetNonblock(fd, true); err != nil {
+		return tun, fmt.Errorf("set nonblock: %w", err)
+	}
+
+	tun = &tunOffload{}
+	tun.ifIndex = uint64(ifreq.Uint32())
+	tun.file = os.NewFile(uintptr(fd), tunModuleCharPath)
+
+	var udp bool
+
+	udp, err = setTunOffloads(tun.file)
+	if err != nil {
+		return tun, fmt.Errorf("set offloads: %w", err)
+	}
+
+	tun.gso = offload.NewVirtioGso()
+	tun.gro = offload.NewVirtioGro(udp)
+	return
+}
+
+func (tun *tunOffload) Name() (name string, err error) {
+
+	sysconn, err := tun.file.SyscallConn()
+	if err != nil {
+		return name, fmt.Errorf(
+			"name: get tunnel name: %w", err)
+	}
+
+	var ifreq unix.Ifreq
+	var opErr error
+	err = sysconn.Control(func(fd uintptr) {
+		opErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
+	})
+
+	if err != nil {
+		return name, fmt.Errorf(
+			"name: get tunnel name: %w", err)
+	}
+
+	if opErr != nil {
+		return name, fmt.Errorf(
+			"name: get tunnel name: %w", opErr)
+	}
+
+	return ifreq.Name(), nil
+}
+
+func (tun *tunOffload) Destroy() error {
+	if err := Destroy(tun.ifIndex); err != nil {
+		return fmt.Errorf("destroy: %w", err)
+	}
+	return nil
+}
+
+func (tun *tunOffload) Read(b []byte) (int, error) {
+
+	if tun.closed.Load() {
+		return 0, fmt.Errorf("read: %w", os.ErrClosed)
+	}
+
+	tun.readMutex.Lock()
+	defer tun.readMutex.Unlock()
+
+	n, err := tun.gso.Recv(tun.file, b)
+	switch err {
+	case nil:
+	case tcpip.ErrShortBuffer:
+		return 0, fmt.Errorf("read: %w", ErrShortBuffer)
+	default:
+		return 0, fmt.Errorf("read: %w", err)
+	}
+
+	return n, err
+}
+
+func (tun *tunOffload) Write(b []byte) (int, error) {
+
+	if tun.closed.Load() {
+		return 0, fmt.Errorf("write: %w", os.ErrClosed)
+	}
+
+	tun.writeMutex.Lock()
+	defer tun.writeMutex.Unlock()
+
+	n, err := tun.gro.Send(tun.file, b)
+	switch err {
+	case nil:
+	case tcpip.ErrShortBuffer:
+		return 0, fmt.Errorf("write: %w", ErrShortBuffer)
+	default:
+		return 0, fmt.Errorf("write: %w", err)
+	}
+
+	return n, err
+}
+
+func (tun *tunOffload) Close() error {
+
+	if tun.closed.Swap(true) {
+		return fmt.Errorf("close: %w", os.ErrClosed)
+	}
+
+	var err error
+	if tun.file != nil {
+		err = tun.file.Close()
+	}
+
+	if err != nil {
+		return fmt.Errorf("close: %w", err)
+	}
+
+	return err
+}
+
+func (tun *tunOffload) ID() uint64 { return tun.ifIndex }
+
+func setTunOffloads(file *os.File) (bool, error) {
+
+	sysconn, err := file.SyscallConn()
+	if err != nil {
+		return false, err
+	}
+
+	var opErr error
+	var ifreq unix.Ifreq
+	var udpEnable bool
+
+	err = sysconn.Control(func(fd uintptr) {
+		opErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
+		if opErr != nil {
+			return
+		}
+
+		flags := ifreq.Uint16()
+		if flags&unix.IFF_VNET_HDR == 0 {
+			opErr = errors.New("kernel did not grant virtio nethdr")
+			return
+		}
+
+		opErr = unix.IoctlSetInt(int(fd),
+			unix.TUNSETOFFLOAD, tcpOffloads)
+		if opErr != nil {
+			return
+		}
+
+		udpErr := unix.IoctlSetInt(
+			int(fd),
+			unix.TUNSETOFFLOAD, tcpOffloads|udpOffloads,
+		)
+
+		udpEnable = udpErr == nil
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	if opErr != nil {
+		return false, opErr
+	}
+
+	return udpEnable, nil
+}
