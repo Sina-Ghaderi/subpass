@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -18,17 +17,23 @@ import (
 )
 
 const appleUtunCtl = "com.apple.net.utun_control"
-const appleSYSPROTO_CONTROL = 2
 
 type Config struct {
 	Name string
+}
+
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
 }
 
 type tunDevice struct {
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
 	closed     atomic.Bool
-	ifIndex    uint64
+	name       string
 	file       *os.File
 }
 
@@ -68,8 +73,10 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, err
 	}
 
+	const SYSPROTO_CONTROL = 2
+
 	fd, err := socketCloexec(
-		unix.AF_SYSTEM, unix.SOCK_DGRAM, appleSYSPROTO_CONTROL)
+		unix.AF_SYSTEM, unix.SOCK_DGRAM, SYSPROTO_CONTROL)
 	if err != nil {
 		return tun, fmt.Errorf("open socket: %w", err)
 	}
@@ -96,16 +103,11 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	const UTUN_OPT_IFNAME = 2
 	utunName, err := unix.GetsockoptString(
-		fd, appleSYSPROTO_CONTROL, UTUN_OPT_IFNAME,
+		fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
 	)
 
 	if err != nil {
 		return tun, fmt.Errorf("get tunnel name: %w", err)
-	}
-
-	iface, err := net.InterfaceByName(utunName)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
@@ -113,41 +115,13 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}
 
 	tun = new(tunDevice)
-	tun.ifIndex = uint64(iface.Index)
+	tun.name = utunName
 	tun.file = os.NewFile(uintptr(fd), utunName)
 	return
 }
 
-func (tun *tunDevice) ID() uint64 { return tun.ifIndex }
-
-func (tun *tunDevice) Name() (name string, err error) {
-
-	sysconn, err := tun.file.SyscallConn()
-	if err != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", err)
-	}
-
-	var opErr error
-
-	err = sysconn.Control(func(fd uintptr) {
-		const UTUN_OPT_IFNAME = 2
-		name, opErr = unix.GetsockoptString(
-			int(fd), appleSYSPROTO_CONTROL, UTUN_OPT_IFNAME,
-		)
-	})
-
-	if err != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", err)
-	}
-
-	if opErr != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", opErr)
-	}
-
-	return name, err
+func (tun *tunDevice) Name() (name string) {
+	return tun.name
 }
 
 func (iface *tunDevice) Close() error {
@@ -187,12 +161,4 @@ func getUtunIndex(config *Config) (int, error) {
 	}
 
 	return ifIndex, nil
-}
-
-func (tun *tunDevice) Destroy() error {
-	return errors.New("operation not supported on this platform")
-}
-
-func Destroy(uint64) error {
-	return errors.New("operation not supported on this platform")
 }

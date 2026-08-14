@@ -5,8 +5,6 @@ package subpass
 import (
 	"errors"
 	"fmt"
-	"math"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -31,8 +29,15 @@ type tunDevice struct {
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
 	closed     atomic.Bool
-	ifIndex    uint64
 	name       string
+}
+
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
+	Destroy() error
 }
 
 func defaltOSparms() Config { return Config{} }
@@ -75,16 +80,9 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	defer func() {
 		if err != nil {
-			destroyByName(tun.name)
+			Destroy(tun.name)
 		}
 	}()
-
-	iface, err := net.InterfaceByName(tun.name)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
-	}
-
-	tun.ifIndex = uint64(iface.Index)
 
 	err = setTunIFHeadMode(tun.file)
 	if err != nil {
@@ -200,33 +198,16 @@ func getTunIndex(config *Config) (int, error) {
 	return ifIndex, nil
 }
 
-func Destroy(ifindex uint64) error {
-
-	if ifindex == 0 || ifindex > math.MaxInt32 {
-		return fmt.Errorf("invalid interface index: %d", ifindex)
-	}
-
-	ifi, err := net.InterfaceByIndex(int(ifindex))
-	if err != nil {
-		return fmt.Errorf("get interface index: %w", err)
-	}
-
-	name := ifi.Name
-	return destroyByName(name)
-
-}
-
 func (tun *tunDevice) Destroy() error {
-	if err := Destroy(tun.ifIndex); err != nil {
+	if err := Destroy(tun.name); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
 }
 
-func (tun *tunDevice) ID() uint64              { return tun.ifIndex }
-func (iface *tunDevice) Name() (string, error) { return iface.name, nil }
+func (tun *tunDevice) Name() string { return tun.name }
 
-func destroyByName(name string) error {
+func Destroy(name string) error {
 
 	const sockType = unix.SOCK_DGRAM | unix.SOCK_CLOEXEC
 

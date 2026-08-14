@@ -35,7 +35,7 @@ func (tun *tunDevice) Read(b []byte) (int, error) {
 	}
 
 	if n > len(buff) {
-		return 0, fmt.Errorf("read: read: invalid ip packet length")
+		return 0, fmt.Errorf("read: invalid ip packet length")
 	}
 
 	buff = buff[addrFamilyTagLen:n]

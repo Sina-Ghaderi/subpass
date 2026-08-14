@@ -19,6 +19,14 @@ const (
 	defaultType = "Wintun"
 )
 
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
+	LUID() uint64
+}
+
 type Config struct {
 	Name         string
 	Type         string
@@ -44,7 +52,8 @@ type tunDevice struct {
 	name      string
 }
 
-func (tun *tunDevice) ID() uint64 { return tun.adaptor.LUID() }
+func (tun *tunDevice) LUID() uint64 { return tun.adaptor.LUID() }
+
 func WintunDriverVersion() string { return wintun.Version() }
 
 func openTunDevice(config *Config) (*tunDevice, error) {
@@ -202,14 +211,6 @@ func checkWintunConfig(config *Config) (err error) {
 	return
 }
 
-func (tun *tunDevice) Name() (name string, err error) {
-	return tun.name, err
-}
-
-func (tun *tunDevice) Destroy() error {
-	return errors.New("operation not supported on this platform")
-}
-
-func Destroy(uint64) error {
-	return errors.New("operation not supported on this platform")
+func (tun *tunDevice) Name() string {
+	return tun.name
 }

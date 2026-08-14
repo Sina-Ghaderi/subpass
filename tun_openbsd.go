@@ -5,7 +5,6 @@ package subpass
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -24,15 +23,21 @@ type tunDevice struct {
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
 	closed     atomic.Bool
-	ifIndex    uint64
 	name       string
+}
+
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
 }
 
 type Config struct{ Name string }
 
 func defaltOSparms() Config { return Config{} }
 
-func (iface *tunDevice) Name() (string, error) { return iface.name, nil }
+func (tun *tunDevice) Name() string { return tun.name }
 
 func openTunDevice(config *Config) (*tunDevice, error) {
 	dev, err := createTunDevice(config)
@@ -70,13 +75,6 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	stat_t := stat.Sys().(*syscall.Stat_t)
 	tun.name = fmt.Sprintf("tun%d", unix.Minor(uint64(stat_t.Rdev)))
-
-	iface, err := net.InterfaceByName(tun.name)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
-	}
-
-	tun.ifIndex = uint64(iface.Index)
 	return
 }
 
@@ -116,13 +114,3 @@ func (iface *tunDevice) Close() error {
 	}
 	return err
 }
-
-func (tun *tunDevice) Destroy() error {
-	return errors.New("operation not supported on this platform")
-}
-
-func Destroy(uint64) error {
-	return errors.New("operation not supported on this platform")
-}
-
-func (tun *tunDevice) ID() uint64 { return tun.ifIndex }

@@ -5,7 +5,6 @@ package subpass
 import (
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -16,6 +15,14 @@ import (
 
 const tunModuleCharPath = "/dev/net/tun"
 const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
+
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
+	Destroy() error
+}
 
 type Config struct {
 	Name           string
@@ -36,7 +43,7 @@ type tunDevice struct {
 	writeMutex sync.Mutex
 	file       *os.File
 	closed     atomic.Bool
-	ifIndex    uint64
+	name       string
 }
 
 func defaltOSparms() Config { return Config{} }
@@ -98,6 +105,8 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
+	tunName := ifreq.Name()
+
 	var value int
 	if config.Persist {
 		value++
@@ -108,11 +117,9 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, fmt.Errorf("set persist mode: %w", err)
 	}
 
-	tunName := ifreq.Name()
-
 	defer func() {
 		if err != nil && value > 0 {
-			destroyByName(tunName)
+			Destroy(tunName)
 		}
 	}()
 
@@ -120,58 +127,20 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return
 	}
 
-	inet, err := unix.Socket(unix.AF_INET,
-		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
-	if err != nil {
-		return tun, fmt.Errorf("open socket: %w", err)
-	}
-
-	defer unix.Close(inet)
-
-	err = unix.IoctlIfreq(inet, unix.SIOCGIFINDEX, ifreq)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
-	}
-
 	if err = unix.SetNonblock(fd, true); err != nil {
 		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
 	tun = &tunDevice{}
-	tun.ifIndex = uint64(ifreq.Uint32())
-	tun.file = os.NewFile(uintptr(fd), tunModuleCharPath)
+	tun.file = os.NewFile(uintptr(fd), tunName)
+	tun.name = tunName
 	return
 }
 
-func (tun *tunDevice) Name() (name string, err error) {
-
-	sysconn, err := tun.file.SyscallConn()
-	if err != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", err)
-	}
-
-	var ifreq unix.Ifreq
-	var opErr error
-	err = sysconn.Control(func(fd uintptr) {
-		opErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
-	})
-
-	if err != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", err)
-	}
-
-	if opErr != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", opErr)
-	}
-
-	return ifreq.Name(), nil
-}
+func (tun *tunDevice) Name() (name string) { return tun.name }
 
 func (tun *tunDevice) Destroy() error {
-	if err := Destroy(tun.ifIndex); err != nil {
+	if err := Destroy(tun.name); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
@@ -247,75 +216,6 @@ func (tun *tunDevice) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (tun *tunDevice) ID() uint64 { return tun.ifIndex }
-
-func Destroy(ifindex uint64) error {
-
-	if ifindex == 0 || ifindex > math.MaxInt32 {
-		return fmt.Errorf("invalid interface index: %d", ifindex)
-	}
-
-	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
-	if err != nil {
-		return fmt.Errorf("open socket: %w", err)
-	}
-	defer unix.Close(fd)
-
-	lsa := &unix.SockaddrNetlink{Family: unix.AF_NETLINK}
-	if err := unix.Bind(fd, lsa); err != nil {
-		return fmt.Errorf("bind socket: %w", err)
-	}
-
-	nlmsgLen := unix.SizeofNlMsghdr + unix.SizeofIfInfomsg
-	buff := make([]byte, nlmsgLen)
-
-	nlmsg := unix.NlMsghdr{
-		Len:   uint32(nlmsgLen),
-		Type:  unix.RTM_DELLINK,
-		Flags: unix.NLM_F_REQUEST | unix.NLM_F_ACK,
-		Seq:   1,
-	}
-	*(*unix.NlMsghdr)(unsafe.Pointer(&buff[0])) = nlmsg
-	offset := unix.SizeofNlMsghdr
-
-	ifinfo := unix.IfInfomsg{
-		Family: unix.AF_UNSPEC,
-		Index:  int32(ifindex),
-	}
-	*(*unix.IfInfomsg)(unsafe.Pointer(&buff[offset])) = ifinfo
-
-	if err := unix.Sendto(fd, buff, 0, lsa); err != nil {
-		return fmt.Errorf("send netlink delete request: %w", err)
-	}
-
-	rb := make([]byte, 4096)
-	n, _, err := unix.Recvfrom(fd, rb, 0)
-	if err != nil {
-		return fmt.Errorf("receive netlink reply: %w", err)
-	}
-
-	if n < unix.SizeofNlMsghdr {
-		return fmt.Errorf("receive netlink reply: short header")
-	}
-
-	replyHeader := (*unix.NlMsghdr)(unsafe.Pointer(&rb[0]))
-	if replyHeader.Type != unix.NLMSG_ERROR {
-		return nil
-	}
-
-	if n < unix.SizeofNlMsghdr+unix.SizeofNlMsgerr {
-		return fmt.Errorf("receive netlink reply: short error message")
-	}
-
-	nlerr := (*unix.NlMsgerr)(unsafe.Pointer(&rb[unix.SizeofNlMsghdr]))
-	if nlerr.Error != 0 {
-		err = unix.Errno(-nlerr.Error)
-		err = fmt.Errorf("netlink reject deletion: %w", err)
-	}
-
-	return err
-}
-
 func tunDevicePermisstions(fd int, config *Config) (err error) {
 	if config.Permissions == nil {
 		return
@@ -337,7 +237,7 @@ func tunDevicePermisstions(fd int, config *Config) (err error) {
 	return
 }
 
-func destroyByName(name string) error {
+func Destroy(name string) error {
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE)
 	if err != nil {
 		return fmt.Errorf("open socket: %w", err)

@@ -24,7 +24,7 @@ type tunOffload struct {
 	gso        *offload.VirtioGso
 	gro        *offload.VirtioGro
 	closed     atomic.Bool
-	ifIndex    uint64
+	name       string
 }
 
 func openOffloadTun(config *Config) (*tunOffload, error) {
@@ -89,7 +89,7 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 
 	defer func() {
 		if err != nil && value > 0 {
-			destroyByName(tunName)
+			Destroy(tunName)
 		}
 	}()
 
@@ -97,26 +97,12 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 		return
 	}
 
-	inet, err := unix.Socket(unix.AF_INET,
-		unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
-	if err != nil {
-		return tun, fmt.Errorf("open socket: %w", err)
-	}
-
-	defer unix.Close(inet)
-
-	err = unix.IoctlIfreq(inet, unix.SIOCGIFINDEX, ifreq)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
-	}
-
 	if err = unix.SetNonblock(fd, true); err != nil {
 		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
-	tun = &tunOffload{}
-	tun.ifIndex = uint64(ifreq.Uint32())
-	tun.file = os.NewFile(uintptr(fd), tunModuleCharPath)
+	tun = &tunOffload{name: tunName}
+	tun.file = os.NewFile(uintptr(fd), tunName)
 
 	var udp bool
 
@@ -130,35 +116,12 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 	return
 }
 
-func (tun *tunOffload) Name() (name string, err error) {
-
-	sysconn, err := tun.file.SyscallConn()
-	if err != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", err)
-	}
-
-	var ifreq unix.Ifreq
-	var opErr error
-	err = sysconn.Control(func(fd uintptr) {
-		opErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
-	})
-
-	if err != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", err)
-	}
-
-	if opErr != nil {
-		return name, fmt.Errorf(
-			"name: get tunnel name: %w", opErr)
-	}
-
-	return ifreq.Name(), nil
+func (tun *tunOffload) Name() string {
+	return tun.name
 }
 
 func (tun *tunOffload) Destroy() error {
-	if err := Destroy(tun.ifIndex); err != nil {
+	if err := Destroy(tun.name); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
@@ -223,8 +186,6 @@ func (tun *tunOffload) Close() error {
 
 	return err
 }
-
-func (tun *tunOffload) ID() uint64 { return tun.ifIndex }
 
 func setTunOffloads(file *os.File) (bool, error) {
 

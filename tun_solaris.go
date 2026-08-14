@@ -5,8 +5,6 @@ package subpass
 import (
 	"errors"
 	"fmt"
-	"math"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -18,21 +16,29 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const tunModuleCharPath = "/dev/tun"
+const ipModulePath = "/dev/ip"
+const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
+const tunReadBufferLen = 1 << 16
+
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
+	Destroy() error
+}
+
 type tunDevice struct {
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
-	ifIndex    uint64
+	name       string
 	dataFile   *os.File
 	linkFile   *os.File
 	buff       []byte
 	unread     []byte
 	closed     atomic.Bool
 }
-
-const tunModuleCharPath = "/dev/tun"
-const ipModulePath = "/dev/ip"
-const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
-const tunReadBufferLen = 1 << 16
 
 type Config struct {
 	Name    string
@@ -141,17 +147,12 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	if tunLinkReq == unix.I_PLINK {
 		defer func() {
 			if err != nil {
-				destroyByName(config.Name)
+				Destroy(config.Name)
 			}
 		}()
 	}
 
-	iface, err := net.InterfaceByName(config.Name)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
-	}
-
-	tun.ifIndex = uint64(iface.Index)
+	tun.name = config.Name
 	tun.buff = make([]byte, 0, tunReadBufferLen)
 	return
 }
@@ -181,8 +182,6 @@ func (tun *tunDevice) Close() error {
 
 	return nil
 }
-
-func (tun *tunDevice) ID() uint64 { return tun.ifIndex }
 
 func (tun *tunDevice) Read(b []byte) (int, error) {
 
@@ -267,7 +266,7 @@ func (tun *tunDevice) readPacket(b []byte) (int, error) {
 
 }
 
-func destroyByName(name string) error {
+func Destroy(name string) error {
 
 	ipFile, err := os.OpenFile(ipModulePath, tunOpenMode, 0)
 	if err != nil {
@@ -296,38 +295,15 @@ func destroyByName(name string) error {
 	return nil
 }
 
-func (tun *tunDevice) Name() (name string, err error) {
-
-	iface, err := net.InterfaceByIndex(int(tun.ifIndex))
-	if err != nil {
-		return name,
-			fmt.Errorf("name: get tunnel name: %w", err)
-	}
-
-	name = iface.Name
-	return
+func (tun *tunDevice) Name() (name string) {
+	return tun.name
 }
 
 func (tun *tunDevice) Destroy() error {
-	if err := Destroy(tun.ifIndex); err != nil {
+	if err := Destroy(tun.name); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
-}
-
-func Destroy(ifindex uint64) error {
-
-	if ifindex == 0 || ifindex > math.MaxInt32 {
-		return fmt.Errorf("invalid interface index: %d", ifindex)
-	}
-
-	ifi, err := net.InterfaceByIndex(int(ifindex))
-	if err != nil {
-		return fmt.Errorf("get interface index: %w", err)
-	}
-
-	name := ifi.Name
-	return destroyByName(name)
 }
 
 func getTunIndex(name string) (int, error) {

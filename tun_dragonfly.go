@@ -5,7 +5,6 @@ package subpass
 import (
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"sync"
@@ -19,12 +18,20 @@ import (
 const tunModuleCharPath = "/dev/tun"
 const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
 
+type Tun interface {
+	Name() string
+	Read([]byte) (int, error)
+	Write([]byte) (int, error)
+	Close() error
+	Destroy() error
+}
+
 type tunDevice struct {
 	file       *os.File
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
 	closed     atomic.Bool
-	ifIndex    uint64
+	name       string
 }
 
 type Config struct {
@@ -60,68 +67,70 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}
 
 	tun = new(tunDevice)
-	tun.file, err = os.OpenFile(tunModuleCharPath, tunOpenMode, 0)
+	fd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
-		return tun, err
+		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
 	}
 
-	tunName, err := getTunName(tun.file)
+	defer func() {
+		if err != nil {
+			unix.Close(fd)
+		}
+	}()
+
+	tunName, err := getTunName(fd)
 	if err != nil {
 		return tun, fmt.Errorf("get tunnel name: %w", err)
 	}
 
 	defer func() {
 		if err != nil {
-			destroyByName(tunName)
+			Destroy(tunName)
 		}
 	}()
 
-	err = setTunIFHeadMode(tun.file)
+	err = setTunIFHeadMode(fd)
 	if err != nil {
 		return tun, fmt.Errorf("set ifhead mode: %w", err)
 	}
 
 	if !config.PTPMode {
-		err = setTunBroadcastMode(tun.file)
+		err = setTunBroadcastMode(fd)
 		if err != nil {
 			return tun, fmt.Errorf("set broadcast mode: %w", err)
 		}
 	}
 
-	err = becomeTunPID(tun.file)
+	err = becomeTunPID(fd)
 	if err != nil {
 		return tun, fmt.Errorf(
 			"set controlling tunnel process: %w", err)
 	}
 
-	netif, err = net.InterfaceByName(tunName)
-	if err != nil {
-		return tun, fmt.Errorf("get interface index: %w", err)
+	if len(config.Name) != 0 {
+		err = setTunName(tunName, config.Name)
+		if err != nil {
+			return tun, fmt.Errorf("rename %s to %s: %w",
+				tunName, config.Name, err,
+			)
+		}
+
+		tunName = config.Name
 	}
 
-	tun.ifIndex = uint64(netif.Index)
-
-	if len(config.Name) == 0 {
-		return
+	tun.name = tunName
+	if err = unix.SetNonblock(fd, true); err != nil {
+		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
-	err = setTunName(tunName, config.Name)
-	if err != nil {
-		return tun, fmt.Errorf("rename %s to %s: %w",
-			tunName, config.Name, err,
-		)
-	}
+	tun.file = os.NewFile(uintptr(fd), tunName)
 
 	return
 }
 
-func (tun *tunDevice) Name() (string, error) {
-	name, err := getTunName(tun.file)
-	if err != nil {
-		return name, fmt.Errorf("name: get tunnel name: %w", err)
-	}
+func (tun *tunDevice) Name() string {
 
-	return name, err
+	return tun.name
 }
 
 func setTunName(oldName, newName string) error {
@@ -161,7 +170,7 @@ func setTunName(oldName, newName string) error {
 }
 
 func (tun *tunDevice) Destroy() error {
-	if err := Destroy(tun.ifIndex); err != nil {
+	if err := Destroy(tun.name); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
@@ -186,25 +195,7 @@ func (iface *tunDevice) Close() error {
 	return err
 }
 
-func (tun *tunDevice) ID() uint64 { return tun.ifIndex }
-
-func Destroy(ifindex uint64) error {
-
-	if ifindex == 0 || ifindex > math.MaxInt32 {
-		return fmt.Errorf("invalid interface index: %d", ifindex)
-	}
-
-	ifi, err := net.InterfaceByIndex(int(ifindex))
-	if err != nil {
-		return fmt.Errorf("get interface index: %w", err)
-	}
-
-	name := ifi.Name
-	return destroyByName(name)
-
-}
-
-func destroyByName(name string) error {
+func Destroy(name string) error {
 
 	const sockType = unix.SOCK_DGRAM | unix.SOCK_CLOEXEC
 	fd, err := unix.Socket(unix.AF_INET, sockType, 0)
@@ -228,11 +219,7 @@ func destroyByName(name string) error {
 	return err
 }
 
-func getTunName(f *os.File) (name string, err error) {
-	sysconn, err := f.SyscallConn()
-	if err != nil {
-		return name, err
-	}
+func getTunName(fd int) (name string, err error) {
 
 	var errno syscall.Errno
 
@@ -241,17 +228,12 @@ func getTunName(f *os.File) (name string, err error) {
 		_    [16]byte
 	}
 
-	err = sysconn.Control(func(fd uintptr) {
-		const TUNGIFNAME = 0x40207462
-		_, _, errno = unix.Syscall(
-			unix.SYS_IOCTL, fd, TUNGIFNAME,
-			uintptr(unsafe.Pointer(&ifreq)),
-		)
-	})
+	const TUNGIFNAME = 0x40207462
 
-	if err != nil {
-		return name, err
-	}
+	_, _, errno = unix.Syscall(
+		unix.SYS_IOCTL, uintptr(fd), TUNGIFNAME,
+		uintptr(unsafe.Pointer(&ifreq)),
+	)
 
 	if errno != 0 {
 		return name, errno
@@ -261,28 +243,18 @@ func getTunName(f *os.File) (name string, err error) {
 	return
 }
 
-func setTunIFHeadMode(f *os.File) error {
-	sysconn, err := f.SyscallConn()
-	if err != nil {
-		return err
-	}
+func setTunIFHeadMode(fd int) error {
 
 	var errno syscall.Errno
 
-	err = sysconn.Control(func(fd uintptr) {
-		const TUNSIFHEAD = 0x80047460
-		ifheadmode := 1
-		_, _, errno = unix.Syscall(
-			unix.SYS_IOCTL,
-			fd,
-			TUNSIFHEAD,
-			uintptr(unsafe.Pointer(&ifheadmode)),
-		)
-	})
-
-	if err != nil {
-		return err
-	}
+	const TUNSIFHEAD = 0x80047460
+	ifheadmode := 1
+	_, _, errno = unix.Syscall(
+		unix.SYS_IOCTL,
+		uintptr(fd),
+		TUNSIFHEAD,
+		uintptr(unsafe.Pointer(&ifheadmode)),
+	)
 
 	if errno != 0 {
 		return errno
@@ -291,24 +263,15 @@ func setTunIFHeadMode(f *os.File) error {
 	return nil
 }
 
-func becomeTunPID(f *os.File) error {
-	sysconn, err := f.SyscallConn()
-	if err != nil {
-		return err
-	}
+func becomeTunPID(fd int) error {
 
 	var errno syscall.Errno
 
-	err = sysconn.Control(func(fd uintptr) {
-		const TUNSIFPID = 0x2000745f
-		_, _, errno = unix.Syscall(
-			unix.SYS_IOCTL, fd, TUNSIFPID, uintptr(0),
-		)
-	})
-
-	if err != nil {
-		return err
-	}
+	const TUNSIFPID = 0x2000745f
+	_, _, errno = unix.Syscall(
+		unix.SYS_IOCTL,
+		uintptr(fd), TUNSIFPID, uintptr(0),
+	)
 
 	if errno != 0 {
 		return errno
@@ -317,29 +280,19 @@ func becomeTunPID(f *os.File) error {
 	return nil
 }
 
-func setTunBroadcastMode(f *os.File) error {
-	sysconn, err := f.SyscallConn()
-	if err != nil {
-		return err
-	}
+func setTunBroadcastMode(fd int) error {
 
 	var errno syscall.Errno
 
-	err = sysconn.Control(func(fd uintptr) {
-		const TUNSIFMODE = 0x8004745e
+	const TUNSIFMODE = 0x8004745e
 
-		ifFlags := unix.IFF_BROADCAST | unix.IFF_MULTICAST
-		_, _, errno = unix.Syscall(
-			unix.SYS_IOCTL,
-			fd,
-			uintptr(TUNSIFMODE),
-			uintptr(unsafe.Pointer(&ifFlags)),
-		)
-	})
-
-	if err != nil {
-		return err
-	}
+	ifFlags := unix.IFF_BROADCAST | unix.IFF_MULTICAST
+	_, _, errno = unix.Syscall(
+		unix.SYS_IOCTL,
+		uintptr(fd),
+		uintptr(TUNSIFMODE),
+		uintptr(unsafe.Pointer(&ifFlags)),
+	)
 
 	if errno != 0 {
 		return errno
