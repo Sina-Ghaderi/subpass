@@ -3,11 +3,12 @@ package subpass
 import (
 	"errors"
 	"io"
+	"math"
 )
 
 func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
 
-	buff := make([]byte, 64*1024)
+	buff := make([]byte, math.MaxUint16)
 	offset := 0
 
 	for {
