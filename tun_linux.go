@@ -5,6 +5,7 @@ package subpass
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"sync"
@@ -18,10 +19,8 @@ const tunModuleCharPath = "/dev/net/tun"
 const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
 
 type Tun interface {
+	io.ReadWriteCloser
 	Name() string
-	Read([]byte) (int, error)
-	Write([]byte) (int, error)
-	Close() error
 	Destroy() error
 }
 

@@ -5,6 +5,7 @@ package subpass
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"strconv"
@@ -24,9 +25,7 @@ type Config struct {
 
 type Tun interface {
 	Name() string
-	Read([]byte) (int, error)
-	Write([]byte) (int, error)
-	Close() error
+	io.ReadWriteCloser
 }
 
 type tunDevice struct {

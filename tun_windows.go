@@ -5,6 +5,7 @@ package subpass
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -20,10 +21,8 @@ const (
 )
 
 type Tun interface {
+	io.ReadWriteCloser
 	Name() string
-	Read([]byte) (int, error)
-	Write([]byte) (int, error)
-	Close() error
 	LUID() uint64
 }
 

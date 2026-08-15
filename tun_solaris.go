@@ -5,6 +5,7 @@ package subpass
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -22,10 +23,8 @@ const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
 const tunReadBufferLen = 1 << 16
 
 type Tun interface {
+	io.ReadWriteCloser
 	Name() string
-	Read([]byte) (int, error)
-	Write([]byte) (int, error)
-	Close() error
 	Destroy() error
 }
 
