@@ -11,10 +11,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const tunCharPathFormat = "/dev/tun%d"
+const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
+
 const tunIDMaxChar = 1 << 12
 const tunMkNodMode = uint32(0600) | unix.S_IFCHR
 
-func openTunFromCharDev(ifIndex int) (file *os.File, err error) {
+func openTunFromCharDev(ifIndex int) (fd int, err error) {
 
 	if ifIndex != -1 {
 		return createIndexedTun(ifIndex)
@@ -23,36 +26,51 @@ func openTunFromCharDev(ifIndex int) (file *os.File, err error) {
 	var tunNodePath string
 	for ifIndex = range tunIDMaxChar {
 		tunNodePath = fmt.Sprintf(tunCharPathFormat, ifIndex)
-		file, err = os.OpenFile(tunNodePath, tunOpenMode, 0)
+		fd, err = unix.Open(tunNodePath, tunOpenMode, 0)
 		if err == nil || !errors.Is(err, unix.EBUSY) {
 			break
 		}
 	}
 
 	if !errors.Is(err, os.ErrNotExist) {
-		return
+		return fd, fmt.Errorf("open %s: %w", tunNodePath, err)
 	}
 
 	if err = createTunNode(ifIndex); err != nil {
-		return
+		return fd, err
 	}
 
-	return os.OpenFile(tunNodePath, tunOpenMode, 0)
+	fd, err = unix.Open(tunNodePath, tunOpenMode, 0)
+	if err != nil {
+		return fd, fmt.Errorf("open %s: %w", tunNodePath, err)
+	}
+
+	return
 }
 
-func createIndexedTun(ifIndex int) (file *os.File, err error) {
+func createIndexedTun(ifIndex int) (fd int, err error) {
+
 	fullPath := fmt.Sprintf(tunCharPathFormat, ifIndex)
 
-	file, err = os.OpenFile(fullPath, tunOpenMode, 0)
-	if err == nil || !errors.Is(err, os.ErrNotExist) {
-		return
+	fd, err = unix.Open(fullPath, tunOpenMode, 0)
+	if err == nil {
+		return fd, nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return fd, fmt.Errorf("open %s: %w", fullPath, err)
 	}
 
 	if err = createTunNode(ifIndex); err != nil {
-		return
+		return fd, err
 	}
 
-	return os.OpenFile(fullPath, tunOpenMode, 0)
+	fd, err = unix.Open(fullPath, tunOpenMode, 0)
+	if err != nil {
+		return fd, fmt.Errorf("open %s: %w", fullPath, err)
+	}
+
+	return
 }
 
 func createTunNode(ifIndex int) error {

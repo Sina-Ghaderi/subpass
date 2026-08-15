@@ -77,21 +77,25 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, err
 	}
 
-	ipFile, err := os.OpenFile(ipModulePath, tunOpenMode, 0)
+	ipFD, err := unix.Open(ipModulePath, tunOpenMode, 0)
 	if err != nil {
-		return tun, err
+		return tun, fmt.Errorf("open %s: %w", ipModulePath, err)
 	}
 
-	defer ipFile.Close()
+	defer unix.Close(ipFD)
 
 	tun = new(tunDevice)
-
-	tun.dataFile, err = os.OpenFile(tunModuleCharPath, tunOpenMode, 0)
+	dataFd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
-		return tun, err
+		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
 	}
 
-	dataFd := int(tun.dataFile.Fd())
+	defer func() {
+		if err != nil {
+			unix.Close(dataFd)
+		}
+	}()
+
 	skppa := ppa
 
 	var strioctl = unix.Strioctl{Cmd: TUNNEWPPA}
@@ -107,12 +111,17 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, fmt.Errorf("create tunnel: ppa mismatch")
 	}
 
-	tun.linkFile, err = os.OpenFile(tunModuleCharPath, tunOpenMode, 0)
+	linkFd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
-		return tun, err
+		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
 	}
 
-	linkFd := int(tun.linkFile.Fd())
+	defer func() {
+		if err != nil {
+			unix.Close(linkFd)
+		}
+	}()
+
 	const modName = "ip"
 	err = unix.IoctlSetString(linkFd, unix.I_PUSH, modName)
 	if err != nil {
@@ -129,8 +138,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		tunLinkReq = unix.I_PLINK
 	}
 
-	ipFd, muxid := int(ipFile.Fd()), 0
-	muxid, err = unix.IoctlSetIntRetInt(ipFd, tunLinkReq, linkFd)
+	muxid, err := unix.IoctlSetIntRetInt(ipFD, tunLinkReq, linkFd)
 	if err != nil {
 		return tun, fmt.Errorf("link tunnel: %w", err)
 	}
@@ -139,7 +147,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	lifreq.SetName(config.Name)
 	*(*int32)(unsafe.Pointer(&lifreq.Lifru[0])) = int32(muxid)
 
-	err = unix.IoctlLifreq(ipFd, unix.SIOCSLIFMUXID, &lifreq)
+	err = unix.IoctlLifreq(ipFD, unix.SIOCSLIFMUXID, &lifreq)
 	if err != nil {
 		return tun, fmt.Errorf("set link muxid: %w", err)
 	}
@@ -152,7 +160,13 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		}()
 	}
 
+	if err = unix.SetNonblock(dataFd, true); err != nil {
+		return tun, fmt.Errorf("set nonblock: %w", err)
+	}
+
 	tun.name = config.Name
+	tun.dataFile = os.NewFile(uintptr(dataFd), tun.name)
+	tun.linkFile = os.NewFile(uintptr(linkFd), tunModuleCharPath)
 	tun.buff = make([]byte, 0, tunReadBufferLen)
 	return
 }

@@ -48,6 +48,10 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 		return nil, fmt.Errorf("offloads cannot be used with vhost-net")
 	}
 
+	if err = validateName(config.Name); err != nil {
+		return
+	}
+
 	fd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
 		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)

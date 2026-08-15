@@ -10,13 +10,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 )
-
-const tunCharPathFormat = "/dev/tun%d"
-const tunOpenMode = unix.O_CLOEXEC | unix.O_RDWR
 
 type tunDevice struct {
 	file       *os.File
@@ -63,18 +59,29 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	tun = new(tunDevice)
 
-	tun.file, err = openTunFromCharDev(index)
+	fd, err := openTunFromCharDev(index)
 	if err != nil {
 		return tun, err
 	}
 
-	stat, err := tun.file.Stat()
-	if err != nil {
+	defer func() {
+		if err != nil {
+			unix.Close(fd)
+		}
+	}()
+
+	var stat_t unix.Stat_t
+
+	if err = unix.Fstat(fd, &stat_t); err != nil {
 		return tun, fmt.Errorf("get tunnel name: %w", err)
 	}
 
-	stat_t := stat.Sys().(*syscall.Stat_t)
+	if err = unix.SetNonblock(fd, true); err != nil {
+		return tun, fmt.Errorf("set nonblock: %w", err)
+	}
+
 	tun.name = fmt.Sprintf("tun%d", unix.Minor(uint64(stat_t.Rdev)))
+	tun.file = os.NewFile(uintptr(fd), tun.name)
 	return
 }
 

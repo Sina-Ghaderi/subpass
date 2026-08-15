@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -48,6 +49,8 @@ type tunDevice struct {
 
 func defaltOSparms() Config { return Config{} }
 
+var validIfaceRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
+
 func openTunDevice(config *Config) (Tun, error) {
 
 	switch {
@@ -77,6 +80,10 @@ func openGenericTun(config *Config) (*tunDevice, error) {
 }
 
 func createTunDevice(config *Config) (tun *tunDevice, err error) {
+
+	if err = validateName(config.Name); err != nil {
+		return
+	}
 
 	fd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
@@ -308,4 +315,20 @@ func Destroy(name string) error {
 	}
 
 	return err
+}
+
+func validateName(name string) error {
+	if len(name) == 0 {
+		return nil
+	}
+
+	if name == "." || name == ".." {
+		return errors.New("invalid interface name")
+	}
+
+	if !validIfaceRegex.MatchString(name) {
+		return errors.New("invalid interface name")
+	}
+
+	return nil
 }
