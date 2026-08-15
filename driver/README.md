@@ -4,7 +4,7 @@ A lightweight TUN/TAP driver for **Solaris**, **OpenIndiana**, **SmartOS**, and 
 
 ### Install for Solaris and Illumos
 
-The recommended installation method is to install the pre-compiled Solaris IPS package using the Image Packaging System (IPS):
+Install pre-compiled Solaris package using the Image Packaging System (IPS):
 
 ```console
 # pkg install -g ./tuntap-1.3.5.p5p driver/network/tuntap
