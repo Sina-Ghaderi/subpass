@@ -65,23 +65,17 @@ func openTunDevice(config *Config) (*tunDevice, error) {
 
 func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
-	const (
-		TUNNEWPPA = 0x540001
-		TUNSETPPA = 0x540002
-		TUNGETPPA = 0x540003
-	)
-
 	ppa, err := getTunIndex(config.Name)
 	if err != nil {
 		return tun, err
 	}
 
-	ipFD, err := unix.Open(ipModulePath, tunOpenMode, 0)
+	ipFd, err := unix.Open(ipModulePath, tunOpenMode, 0)
 	if err != nil {
 		return tun, fmt.Errorf("open %s: %w", ipModulePath, err)
 	}
 
-	defer unix.Close(ipFD)
+	defer unix.Close(ipFd)
 
 	tun = new(tunDevice)
 	dataFd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
@@ -95,20 +89,12 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		}
 	}()
 
-	skppa := ppa
-
-	var strioctl = unix.Strioctl{Cmd: TUNNEWPPA}
-	strioctl.Len = int32(unsafe.Sizeof(skppa))
-	strioctl.Dp = (*int8)(unsafe.Pointer(&skppa))
-
-	_, err = unix.IoctlSetStrioctlRetInt(dataFd, unix.I_STR, &strioctl)
+	skppa, err := tunNewPPA(dataFd, ppa)
 	if err != nil {
 		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
-	if ppa != skppa {
-		return tun, fmt.Errorf("create tunnel: ppa mismatch")
-	}
+	tunName := fmt.Sprintf("tun%d", skppa)
 
 	linkFd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
@@ -137,16 +123,16 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		tunLinkReq = unix.I_PLINK
 	}
 
-	muxid, err := unix.IoctlSetIntRetInt(ipFD, tunLinkReq, linkFd)
+	muxid, err := unix.IoctlSetIntRetInt(ipFd, tunLinkReq, linkFd)
 	if err != nil {
 		return tun, fmt.Errorf("link tunnel: %w", err)
 	}
 
 	var lifreq unix.Lifreq
-	lifreq.SetName(config.Name)
+	lifreq.SetName(tunName)
 	*(*int32)(unsafe.Pointer(&lifreq.Lifru[0])) = int32(muxid)
 
-	err = unix.IoctlLifreq(ipFD, unix.SIOCSLIFMUXID, &lifreq)
+	err = unix.IoctlLifreq(ipFd, unix.SIOCSLIFMUXID, &lifreq)
 	if err != nil {
 		return tun, fmt.Errorf("set link muxid: %w", err)
 	}
@@ -154,7 +140,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	if tunLinkReq == unix.I_PLINK {
 		defer func() {
 			if err != nil {
-				Destroy(config.Name)
+				Destroy(tunName)
 			}
 		}()
 	}
@@ -163,11 +149,40 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
-	tun.name = config.Name
+	tun.name = tunName
 	tun.dataFile = os.NewFile(uintptr(dataFd), tun.name)
 	tun.linkFile = os.NewFile(uintptr(linkFd), tunModuleCharPath)
 	tun.buff = make([]byte, 0, tunReadBufferLen)
 	return
+}
+
+func tunNewPPA(dataFd int, ppa int) (int, error) {
+
+	const (
+		TUNNEWPPA = 0x540001
+		TUNSETPPA = 0x540002
+		TUNGETPPA = 0x540003
+	)
+
+	cache := ppa
+	ioc := unix.Strioctl{
+		Len: int32(unsafe.Sizeof(cache)),
+		Dp:  (*int8)(unsafe.Pointer(&cache)),
+		Cmd: TUNNEWPPA,
+	}
+
+	skppa, err := unix.IoctlSetStrioctlRetInt(dataFd, unix.I_STR, &ioc)
+	if err != nil {
+		return skppa, err
+	}
+
+	if ppa > -1 && ppa != skppa {
+		return -1, errors.New(
+			"kernel allocated a different ppa than requested",
+		)
+	}
+
+	return skppa, err
 }
 
 func (tun *tunDevice) Close() error {
@@ -322,7 +337,7 @@ func (tun *tunDevice) Destroy() error {
 func getTunIndex(name string) (int, error) {
 
 	if len(name) == 0 {
-		return -1, errors.New("interface name cannot be empty")
+		return -1, nil
 	}
 
 	const tunPrefix = "tun"
