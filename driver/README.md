@@ -18,9 +18,11 @@ Install the required packages on **Solaris 11.4** by running `pkg install gcc gn
 Configure the build environment and compile the driver:
 
 ```console
-# cd tuntap && ./configure
-# make package
+# cd tuntap
+# ./configure
+# make
 ```
+And create a Solaris IPS package by running `make package`
 
 
 ### Verification
