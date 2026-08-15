@@ -11,12 +11,6 @@ func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
 	buff := make([]byte, math.MaxUint16)
 	offset := 0
 
-	_, srcIsTypeTun := src.(Tun)
-	_, dstIsTypeTun := dst.(Tun)
-	if !srcIsTypeTun && !dstIsTypeTun {
-		return 0, errors.New("neither src nor dst is of type subpass.Tun")
-	}
-
 	for {
 		nr, er := src.Read(buff[offset:])
 		if nr > 0 {

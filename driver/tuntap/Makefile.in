@@ -1,0 +1,136 @@
+# 
+#  Universal TUN/TAP device driver.
+# 
+#  Multithreaded STREAMS tun pseudo device driver.
+# 
+#  Copyright (C) 1999-2000 Maxim Krasnyansky <max_mk@yahoo.com>
+# 
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+# 
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+#  GNU General Public License for more details.
+#
+#  $Id: Makefile.in,v 1.7 2000/06/20 03:14:17 maxk Exp
+#
+
+# Modified by Kazuyoshi <admin2@whiteboard.ne.jp>
+# Modified for supporting Ethernet tunneling as known as TAP.
+
+CONFIGURE_FILES = Makefile config.status config.cache config.h config.log
+
+CC = @CC@
+LD = ld
+RM = rm
+
+DEFS = @DEFS@
+KCFLAGS = $(DEFS) @KCFLAGS@ 
+KCFLAGS += -Wno-incompatible-pointer-types 
+KCFLAGS += -mno-sse -mno-mmx -mno-3dnow -mno-red-zone -mcmodel=kernel -fno-builtin 
+LD_FLAGS = @LD_OPT@
+
+
+
+
+ADD_DRV = /usr/sbin/add_drv
+REM_DRV = /usr/sbin/rem_drv
+DRV_DIR = @DRV_DIR@
+DRV_CONF_DIR = /usr/kernel/drv
+SRCDIR = @srcdir@
+DESTDIR = @prefix@
+INSTALL = @INSTALL@
+PKG_VERSION = @PACKAGE_VERSION@
+PKG_PUBLISHER = sina-ghaderi
+PKG_NAME = driver/network/tuntap
+PKG_REPO = repo
+PKG_PROTO = proto
+PKG_MANIFEST = .manifest
+PKG_OUTPUT = tuntap-$(PKG_VERSION).p5p
+
+
+all: tun tap
+
+tun: tun.o
+	$(LD) $(LD_FLAGS) -r -o tun tun.o
+tap: tap.o
+	$(LD) $(LD_FLAGS) -r -o tap tap.o
+
+tun.o: $(SRCDIR)/tun.c $(SRCDIR)/if_tun.h
+	$(CC) $(KCFLAGS) -c $(SRCDIR)/tun.c -o tun.o -DTUNTAP_TUN
+
+tap.o: $(SRCDIR)/tun.c $(SRCDIR)/if_tun.h
+	$(CC) $(KCFLAGS) -c $(SRCDIR)/tun.c -o tap.o -DTUNTAP_TAP
+
+
+
+package: tun tap
+	rm -rf $(PKG_PROTO) $(PKG_REPO) $(PKG_MANIFEST) $(PKG_OUTPUT)
+	mkdir -p $(PKG_PROTO)
+	$(MAKE) DESTDIR=`pwd`/$(PKG_PROTO) copyfile
+	@echo "set name=pkg.fmri value=pkg://$(PKG_PUBLISHER)/$(PKG_NAME)@$(PKG_VERSION),5.11" > $(PKG_MANIFEST)
+	echo "set name=pkg.summary value=\"Pseudo TUN/TAP Driver\"" >> $(PKG_MANIFEST)
+	@echo "set name=pkg.description value=\"Pseudo TUN/TAP driver for Solaris and Illumos\"" >> $(PKG_MANIFEST)
+	@echo "driver name=tun perms=\"* 0660 root sys\"" >> $(PKG_MANIFEST)
+	@echo "driver name=tap perms=\"* 0660 root sys\"" >> $(PKG_MANIFEST)
+	pkgsend generate $(PKG_PROTO) | grep -v "^dir " >> $(PKG_MANIFEST)
+	pkgfmt $(PKG_MANIFEST)
+	pkgrepo create $(PKG_REPO)
+	pkgrepo set -s $(PKG_REPO) publisher/prefix=$(PKG_PUBLISHER)
+	pkgsend publish \
+		-s $(PKG_REPO) \
+		-d $(PKG_PROTO) \
+		$(PKG_MANIFEST)
+	pkgrecv \
+		-s $(PKG_REPO) \
+		-a \
+		-d $(PKG_OUTPUT) \
+		pkg://$(PKG_PUBLISHER)/$(PKG_NAME)
+		
+	rm -rf $(PKG_PROTO) $(PKG_REPO) $(PKG_MANIFEST)
+	@echo
+	@echo "Package created successfully:"
+	@echo "  $(PKG_OUTPUT)"
+
+
+copyfile: tun tap
+	$(INSTALL) -d -m 0755 $(DESTDIR)/usr/include/net
+	$(INSTALL) -d -m 0755 $(DESTDIR)$(DRV_DIR)
+	$(INSTALL) -m 644 $(SRCDIR)/if_tun.h $(DESTDIR)/usr/include/net 
+	$(INSTALL) -m 644 tun $(DESTDIR)$(DRV_DIR)
+	$(INSTALL) -m 644 tap $(DESTDIR)$(DRV_DIR)
+	$(INSTALL) -m 644 $(SRCDIR)/tun.conf $(DESTDIR)$(DRV_CONF_DIR)
+	$(INSTALL) -m 644 $(SRCDIR)/tap.conf $(DESTDIR)$(DRV_CONF_DIR)
+
+
+install: tun tap
+	$(INSTALL) -d -m 0755 $(DESTDIR)/usr/include/net
+	$(INSTALL) -d -m 0755 $(DESTDIR)$(DRV_DIR)
+	$(INSTALL) -m 644 $(SRCDIR)/if_tun.h $(DESTDIR)/usr/include/net 
+	$(INSTALL) -m 644 tun $(DESTDIR)$(DRV_DIR)
+	$(INSTALL) -m 644 tap $(DESTDIR)$(DRV_DIR)
+	$(INSTALL) -m 644 $(SRCDIR)/tun.conf $(DESTDIR)$(DRV_CONF_DIR)
+	$(INSTALL) -m 644 $(SRCDIR)/tap.conf $(DESTDIR)$(DRV_CONF_DIR)
+	-[ -z "$(DESTDIR)" ]&& $(REM_DRV) tun >/dev/null 2>&1
+	-[ -z "$(DESTDIR)" ]&& $(REM_DRV) tap >/dev/null 2>&1
+	-[ -z "$(DESTDIR)" ]&& $(ADD_DRV) tun	
+	-[ -z "$(DESTDIR)" ]&& $(ADD_DRV) tap
+
+uninstall:
+	-[ -z "$(DESTDIR)" ]&& $(REM_DRV) tun >/dev/null 2>&1
+	-[ -z "$(DESTDIR)" ]&& $(REM_DRV) tap >/dev/null 2>&1
+	-[ -z "$(DESTDIR)" ]&& $(RM) $(DESTDIR)$(DRV_CONF_DIR)/tun.conf
+	-[ -z "$(DESTDIR)" ]&& $(RM) $(DESTDIR)$(DRV_CONF_DIR)/tap.conf
+	-[ -z "$(DESTDIR)" ]&& $(RM) $(DESTDIR)$(DRV_DIR)/tun
+	-[ -z "$(DESTDIR)" ]&& $(RM) $(DESTDIR)$(DRV_DIR)/tap
+
+clean:
+	rm -f tun tap *.o *~
+	rm -f tun tun *.o *~
+	rm -rf $(PKG_PROTO) $(PKG_REPO) $(PKG_MANIFEST) $(PKG_OUTPUT)
+
+distclean:
+	rm -f $(CONFIGURE_FILES)
