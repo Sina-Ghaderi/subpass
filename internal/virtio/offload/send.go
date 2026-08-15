@@ -13,14 +13,14 @@ import (
 
 var _zero uintptr
 
-func writeVector(fd int, vhdr, hdr []byte, vlen int, iovs [][]byte) (err error) {
+func writeVector(file *os.File, vhdr, hdr []byte, vlen int, iovs [][]byte) (err error) {
 
 	iovecs := make([]unix.Iovec, 0, batchProcess)
 	iovecs = appendHdr(iovecs, vhdr, hdr)
 	iovecs = appendBytes(iovecs, iovs)
 
 	var n int
-	n, err = writeVectorSyscall(uintptr(fd), iovecs)
+	n, err = writeVectorSyscall(file.Fd(), iovecs)
 	if n < 0 {
 		n = 0
 	}
@@ -32,13 +32,13 @@ func writeVector(fd int, vhdr, hdr []byte, vlen int, iovs [][]byte) (err error) 
 	}
 
 	if err != nil {
-		err = wrapErr("write", err)
+		err = wrapErr("write", file.Name(), err)
 	}
 
 	return err
 }
 
-func wrapErr(op string, err error) error {
+func wrapErr(op string, path string, err error) error {
 	if err == nil || err == io.EOF {
 		return err
 	}
@@ -46,7 +46,7 @@ func wrapErr(op string, err error) error {
 		err = os.ErrClosed
 	}
 
-	return &os.PathError{Op: op, Err: err}
+	return &os.PathError{Op: op, Err: err, Path: path}
 }
 
 func appendHdr(vecs []unix.Iovec, vhdr, hdr []byte) []unix.Iovec {

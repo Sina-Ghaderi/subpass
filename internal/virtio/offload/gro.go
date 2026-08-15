@@ -512,7 +512,6 @@ func (p *VirtioGro) Send(f *os.File, b []byte) (n int, err error) {
 
 	defer p.table.resetFlowTable()
 
-	fd := int(f.Fd())
 	var packet packet
 
 	for len(unchecked) > 0 {
@@ -533,7 +532,7 @@ func (p *VirtioGro) Send(f *os.File, b []byte) (n int, err error) {
 		phdrs := packet.ptr[:hdrLen]
 		pdata := packet.ptr[hdrLen:]
 
-		err = writeVector(fd, vnthdr, phdrs, len(pdata), [][]byte{pdata})
+		err = writeVector(f, vnthdr, phdrs, len(pdata), [][]byte{pdata})
 		if err != nil {
 			break
 		}
@@ -551,7 +550,7 @@ func (p *VirtioGro) Send(f *os.File, b []byte) (n int, err error) {
 
 		if err == nil {
 			h := p.table.prepareMegaPacket(mega, hdrbuf)
-			err = writeVector(fd, vnthdr, h, mega.datalen, mega.data)
+			err = writeVector(f, vnthdr, h, mega.datalen, mega.data)
 		}
 
 		// cleanup
