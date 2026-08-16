@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/sina-ghaderi/subpass/internal/virtio/nethdr"
 	"github.com/sina-ghaderi/subpass/internal/virtio/offload"
 	"github.com/sina-ghaderi/subpass/tcpip"
 	"golang.org/x/sys/unix"
@@ -68,7 +69,8 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 		return tun, errors.New("interface name too long")
 	}
 
-	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN | unix.IFF_VNET_HDR)
+	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN | unix.IFF_TUN_EXCL |
+		unix.IFF_VNET_HDR)
 	if config.MultiQueue {
 		flags |= unix.IFF_MULTI_QUEUE
 	}
@@ -107,6 +109,10 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 
 	tun = &tunOffload{name: tunName}
 	tun.file = os.NewFile(uintptr(fd), tunName)
+
+	if err = setTunNetHdrLen(tun.file); err != nil {
+		return tun, fmt.Errorf("set nethdr size: %w", err)
+	}
 
 	var udp bool
 
@@ -191,6 +197,29 @@ func (tun *tunOffload) Close() error {
 	return err
 }
 
+func setTunNetHdrLen(file *os.File) error {
+
+	sysconn, err := file.SyscallConn()
+	if err != nil {
+		return err
+	}
+
+	var opErr error
+	err = sysconn.Control(func(fd uintptr) {
+		opErr = unix.IoctlSetPointerInt(int(fd),
+			unix.TUNSETVNETHDRSZ, nethdr.VirtioNetHdrLen)
+	})
+	if err != nil {
+		return err
+	}
+
+	if opErr != nil {
+		return opErr
+	}
+
+	return nil
+}
+
 func setTunOffloads(file *os.File) (bool, error) {
 
 	sysconn, err := file.SyscallConn()
@@ -222,7 +251,8 @@ func setTunOffloads(file *os.File) (bool, error) {
 
 		udpErr := unix.IoctlSetInt(
 			int(fd),
-			unix.TUNSETOFFLOAD, tcpOffloads|udpOffloads,
+			unix.TUNSETOFFLOAD,
+			tcpOffloads|udpOffloads,
 		)
 
 		udpEnable = udpErr == nil

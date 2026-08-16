@@ -100,7 +100,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		return tun, errors.New("interface name too long")
 	}
 
-	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN)
+	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN | unix.IFF_TUN_EXCL)
 	if config.MultiQueue {
 		flags |= unix.IFF_MULTI_QUEUE
 	}

@@ -29,6 +29,7 @@ type VirtioNetHdr struct {
 	GsoSize    uint16
 	CsumStart  uint16
 	CsumOffset uint16
+	NumBuffers uint16
 }
 
 func (v *VirtioNetHdr) Decode(b []byte) error {
