@@ -18,7 +18,7 @@ import (
 const tcpOffloads = unix.TUN_F_CSUM | unix.TUN_F_TSO4 | unix.TUN_F_TSO6
 const udpOffloads = unix.TUN_F_USO4 | unix.TUN_F_USO6
 
-type tunOffload struct {
+type tunDeviceOffload struct {
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
 	file       *os.File
@@ -28,7 +28,7 @@ type tunOffload struct {
 	name       string
 }
 
-func openOffloadTun(config *Config) (*tunOffload, error) {
+func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
 	dev, err := createTunOffload(config)
 	if err == nil {
 		return dev, err
@@ -43,7 +43,7 @@ func openOffloadTun(config *Config) (*tunOffload, error) {
 	return dev, err
 }
 
-func createTunOffload(config *Config) (tun *tunOffload, err error) {
+func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
 
 	if config.EnableOffloads && config.UseVhostNet {
 		return nil, fmt.Errorf("offloads cannot be used with vhost-net")
@@ -110,7 +110,7 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 		return tun, fmt.Errorf("set nonblock: %w", err)
 	}
 
-	tun = &tunOffload{name: tunName}
+	tun = &tunDeviceOffload{name: tunName}
 	tun.file = os.NewFile(uintptr(fd), tunName)
 
 	if err = setTunNetHdrSize(tun.file); err != nil {
@@ -129,18 +129,18 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 	return
 }
 
-func (tun *tunOffload) Name() string {
+func (tun *tunDeviceOffload) Name() string {
 	return tun.name
 }
 
-func (tun *tunOffload) Destroy() error {
+func (tun *tunDeviceOffload) Destroy() error {
 	if err := Destroy(tun.name); err != nil {
 		return fmt.Errorf("destroy: %w", err)
 	}
 	return nil
 }
 
-func (tun *tunOffload) Read(b []byte) (int, error) {
+func (tun *tunDeviceOffload) Read(b []byte) (int, error) {
 
 	if tun.closed.Load() {
 		return 0, fmt.Errorf("read: %w", os.ErrClosed)
@@ -161,7 +161,7 @@ func (tun *tunOffload) Read(b []byte) (int, error) {
 	return n, err
 }
 
-func (tun *tunOffload) Write(b []byte) (int, error) {
+func (tun *tunDeviceOffload) Write(b []byte) (int, error) {
 
 	if tun.closed.Load() {
 		return 0, fmt.Errorf("write: %w", os.ErrClosed)
@@ -182,7 +182,7 @@ func (tun *tunOffload) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (tun *tunOffload) Close() error {
+func (tun *tunDeviceOffload) Close() error {
 
 	if tun.closed.Swap(true) {
 		return fmt.Errorf("close: %w", os.ErrClosed)
