@@ -173,13 +173,14 @@ func tunNewPPA(dataFd int, ppa int) (int, error) {
 
 	skppa, err := unix.IoctlSetStrioctlRetInt(dataFd, unix.I_STR, &ioc)
 	if err != nil {
+		if errors.Is(err, unix.EEXIST) {
+			err = os.ErrExist
+		}
 		return skppa, err
 	}
 
 	if ppa > -1 && ppa != skppa {
-		return -1, errors.New(
-			"kernel allocated a different ppa than requested",
-		)
+		return skppa, errors.New("ppa mismatch")
 	}
 
 	return skppa, err

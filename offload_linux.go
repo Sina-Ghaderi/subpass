@@ -78,6 +78,9 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 	ifreq.SetUint16(flags)
 
 	if err = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifreq); err != nil {
+		if errors.Is(err, unix.EBUSY) {
+			err = os.ErrExist
+		}
 		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
