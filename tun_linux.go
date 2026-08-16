@@ -69,7 +69,7 @@ func openGenericTun(config *Config) (*tunDevice, error) {
 		return dev, err
 	}
 
-	err = fmt.Errorf("create device: %w", err)
+	err = fmt.Errorf("open device: %w", err)
 	if dev != nil && dev.file != nil {
 		dev.file.Close()
 	}

@@ -58,7 +58,7 @@ func WintunDriverVersion() string { return wintun.Version() }
 func openTunDevice(config *Config) (*tunDevice, error) {
 	dev, err := createTunDevice(config)
 	if err != nil {
-		err = fmt.Errorf("create device: %w", err)
+		err = fmt.Errorf("open device: %w", err)
 		dev = nil
 	}
 	return dev, err
