@@ -1,21 +1,10 @@
-package nethdr
+package virtio
 
 import (
 	"encoding/binary"
 	"math/rand"
 	"testing"
 )
-
-// TestVirtioNetHdrLen locks in the wire size the rest of the codebase
-// assumes everywhere (buffer sizing, offset arithmetic in gso/gro). The
-// struct's field order (two 1-byte fields, then four 2-byte fields) is
-// exactly what avoids compiler padding on every architecture Go supports -
-// if that ever changes, this is the test that should catch it.
-func TestVirtioNetHdrLen(t *testing.T) {
-	if VirtioNetHdrLen != 10 {
-		t.Fatalf("VirtioNetHdrLen = %d, want 10 (1+1+2+2+2+2, unpadded)", VirtioNetHdrLen)
-	}
-}
 
 // TestFlagAndGsoTypeConstants pins the numeric values to the virtio-net
 // spec. These are read/written directly as raw bytes to the kernel via the
@@ -48,11 +37,11 @@ func TestFlagAndGsoTypeConstants(t *testing.T) {
 // rawVnetHdrBytes lays out a virtio_net_hdr by hand, field by field, using
 // the host's native endianness for the multi-byte fields - exactly how the
 // kernel produces/consumes this structure over a tun fd. This is
-// deliberately independent of VirtioNetHdr/Decode/Encode so the test has
+// deliberately independent of NetHdr/Decode/Encode so the test has
 // something external to check the unsafe-pointer-based implementation
 // against.
 func rawVnetHdrBytes(flags, gsoType uint8, hdrLen, gsoSize, csumStart, csumOffset uint16) []byte {
-	b := make([]byte, VirtioNetHdrLen)
+	b := make([]byte, NetHdrLen)
 	b[0] = flags
 	b[1] = gsoType
 	binary.NativeEndian.PutUint16(b[2:4], hdrLen)
@@ -65,7 +54,7 @@ func rawVnetHdrBytes(flags, gsoType uint8, hdrLen, gsoSize, csumStart, csumOffse
 func TestDecode_FieldByteOffsets(t *testing.T) {
 	raw := rawVnetHdrBytes(0x1, 0x4, 0x1234, 0x5678, 0x9abc, 0xdef0)
 
-	var v VirtioNetHdr
+	var v NetHdr
 	if err := v.Decode(raw); err != nil {
 		t.Fatalf("Decode: unexpected error: %v", err)
 	}
@@ -87,7 +76,7 @@ func TestDecode_FieldByteOffsets(t *testing.T) {
 }
 
 func TestEncode_FieldByteOffsets(t *testing.T) {
-	v := VirtioNetHdr{
+	v := NetHdr{
 		Flags:      0x2,
 		GsoType:    0x5,
 		HdrLen:     0x1111,
@@ -96,7 +85,7 @@ func TestEncode_FieldByteOffsets(t *testing.T) {
 		CsumOffset: 0x4444,
 	}
 
-	got := make([]byte, VirtioNetHdrLen)
+	got := make([]byte, NetHdrLen)
 	if err := v.Encode(got); err != nil {
 		t.Fatalf("Encode: unexpected error: %v", err)
 	}
@@ -120,7 +109,7 @@ func TestDecodeEncode_Symmetric(t *testing.T) {
 	extremes := []uint16{0, 1, 0xff, 0x100, 0x7fff, 0x8000, 0xfffe, 0xffff}
 
 	for i := 0; i < 500; i++ {
-		var v VirtioNetHdr
+		var v NetHdr
 		v.Flags = uint8(rng.Intn(256))
 		v.GsoType = uint8(rng.Intn(256))
 		if i < len(extremes)*4 {
@@ -137,12 +126,12 @@ func TestDecodeEncode_Symmetric(t *testing.T) {
 			v.CsumOffset = uint16(rng.Intn(65536))
 		}
 
-		buf := make([]byte, VirtioNetHdrLen)
+		buf := make([]byte, NetHdrLen)
 		if err := v.Encode(buf); err != nil {
 			t.Fatalf("iter %d: Encode: %v", i, err)
 		}
 
-		var got VirtioNetHdr
+		var got NetHdr
 		if err := got.Decode(buf); err != nil {
 			t.Fatalf("iter %d: Decode: %v", i, err)
 		}
@@ -154,13 +143,13 @@ func TestDecodeEncode_Symmetric(t *testing.T) {
 }
 
 func TestDecode_ShortBuffer(t *testing.T) {
-	for n := 0; n < VirtioNetHdrLen; n++ {
+	for n := 0; n < NetHdrLen; n++ {
 		n := n
 		t.Run("", func(t *testing.T) {
 			b := make([]byte, n)
 			// Poison the struct beforehand so we can confirm a short buffer
 			// leaves it untouched rather than partially overwritten.
-			sentinel := VirtioNetHdr{Flags: 0xaa, GsoType: 0xbb, HdrLen: 0xcccc,
+			sentinel := NetHdr{Flags: 0xaa, GsoType: 0xbb, HdrLen: 0xcccc,
 				GsoSize: 0xdddd, CsumStart: 0xeeee, CsumOffset: 0xffff}
 			v := sentinel
 
@@ -174,19 +163,19 @@ func TestDecode_ShortBuffer(t *testing.T) {
 		})
 	}
 
-	// Exactly VirtioNetHdrLen must succeed - the off-by-one boundary right
+	// Exactly NetHdrLen must succeed - the off-by-one boundary right
 	// above the short-buffer cases above.
-	b := make([]byte, VirtioNetHdrLen)
-	var v VirtioNetHdr
+	b := make([]byte, NetHdrLen)
+	var v NetHdr
 	if err := v.Decode(b); err != nil {
-		t.Fatalf("len(b)=VirtioNetHdrLen: unexpected error: %v", err)
+		t.Fatalf("len(b)=NetHdrLen: unexpected error: %v", err)
 	}
 }
 
 func TestEncode_ShortBuffer(t *testing.T) {
-	v := VirtioNetHdr{Flags: 1, GsoType: 1, HdrLen: 40, GsoSize: 1440, CsumStart: 20, CsumOffset: 16}
+	v := NetHdr{Flags: 1, GsoType: 1, HdrLen: 40, GsoSize: 1440, CsumStart: 20, CsumOffset: 16}
 
-	for n := 0; n < VirtioNetHdrLen; n++ {
+	for n := 0; n < NetHdrLen; n++ {
 		n := n
 		t.Run("", func(t *testing.T) {
 			b := make([]byte, n)
@@ -207,7 +196,7 @@ func TestEncode_ShortBuffer(t *testing.T) {
 }
 
 // TestDecode_IgnoresTrailingBytes verifies Decode only ever consumes the
-// first VirtioNetHdrLen bytes of a longer buffer (e.g. vnet_hdr immediately
+// first NetHdrLen bytes of a longer buffer (e.g. vnet_hdr immediately
 // followed by packet data in the same read buffer, which is exactly how
 // gso/recv_offload.go calls it) and never reads or is affected by what
 // comes after.
@@ -216,35 +205,35 @@ func TestDecode_IgnoresTrailingBytes(t *testing.T) {
 	trailer := []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x11, 0x22}
 	full := append(append([]byte{}, raw...), trailer...)
 
-	var v VirtioNetHdr
+	var v NetHdr
 	if err := v.Decode(full); err != nil {
 		t.Fatalf("Decode: unexpected error: %v", err)
 	}
-	want := VirtioNetHdr{Flags: 1, GsoType: 1, HdrLen: 40, GsoSize: 1440, CsumStart: 20, CsumOffset: 16}
+	want := NetHdr{Flags: 1, GsoType: 1, HdrLen: 40, GsoSize: 1440, CsumStart: 20, CsumOffset: 16}
 	if v != want {
 		t.Fatalf("got %+v, want %+v", v, want)
 	}
 }
 
 // TestEncode_IgnoresTrailingCapacity mirrors the above for Encode: bytes
-// beyond VirtioNetHdrLen in the destination must be left alone.
+// beyond NetHdrLen in the destination must be left alone.
 func TestEncode_IgnoresTrailingCapacity(t *testing.T) {
-	v := VirtioNetHdr{Flags: 1, GsoType: 4, HdrLen: 60, GsoSize: 1220, CsumStart: 40, CsumOffset: 16}
+	v := NetHdr{Flags: 1, GsoType: 4, HdrLen: 60, GsoSize: 1220, CsumStart: 40, CsumOffset: 16}
 
-	buf := make([]byte, VirtioNetHdrLen+8)
-	for i := VirtioNetHdrLen; i < len(buf); i++ {
+	buf := make([]byte, NetHdrLen+8)
+	for i := NetHdrLen; i < len(buf); i++ {
 		buf[i] = 0x77
 	}
 	if err := v.Encode(buf); err != nil {
 		t.Fatalf("Encode: unexpected error: %v", err)
 	}
-	for i := VirtioNetHdrLen; i < len(buf); i++ {
+	for i := NetHdrLen; i < len(buf); i++ {
 		if buf[i] != 0x77 {
-			t.Fatalf("byte %d beyond VirtioNetHdrLen was touched: got %#x, want untouched 0x77", i, buf[i])
+			t.Fatalf("byte %d beyond NetHdrLen was touched: got %#x, want untouched 0x77", i, buf[i])
 		}
 	}
 
-	var got VirtioNetHdr
+	var got NetHdr
 	if err := got.Decode(buf); err != nil {
 		t.Fatalf("Decode: unexpected error: %v", err)
 	}
@@ -257,16 +246,16 @@ func TestEncode_IgnoresTrailingCapacity(t *testing.T) {
 // all-zeros header (the common GSO_NONE, no-checksum-offload case) must
 // decode/encode cleanly.
 func TestZeroValueRoundTrips(t *testing.T) {
-	buf := make([]byte, VirtioNetHdrLen)
-	var v VirtioNetHdr
+	buf := make([]byte, NetHdrLen)
+	var v NetHdr
 	if err := v.Decode(buf); err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	if v != (VirtioNetHdr{}) {
+	if v != (NetHdr{}) {
 		t.Fatalf("got %+v, want zero value", v)
 	}
 
-	out := make([]byte, VirtioNetHdrLen)
+	out := make([]byte, NetHdrLen)
 	if err := v.Encode(out); err != nil {
 		t.Fatalf("Encode: %v", err)
 	}

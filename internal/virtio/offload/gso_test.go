@@ -7,14 +7,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sina-ghaderi/subpass/internal/virtio/nethdr"
+	"github.com/sina-ghaderi/subpass/internal/virtio"
 	"github.com/sina-ghaderi/subpass/tcpip"
 )
 
 // encodeMockHdr safely encodes the VirtioNetHdr into bytes for Decode() to consume.
 // It tries LittleEndian (standard for Virtio) and falls back to BigEndian if Decode expects it.
-func encodeMockHdr(target nethdr.VirtioNetHdr) []byte {
-	b := make([]byte, nethdr.VirtioNetHdrLen)
+func encodeMockHdr(target virtio.NetHdr) []byte {
+	b := make([]byte, virtio.NetHdrLen)
 
 	// Try standard LittleEndian
 	b[0] = target.Flags
@@ -24,14 +24,14 @@ func encodeMockHdr(target nethdr.VirtioNetHdr) []byte {
 	binary.LittleEndian.PutUint16(b[6:], target.CsumStart)
 	binary.LittleEndian.PutUint16(b[8:], target.CsumOffset)
 
-	var verify nethdr.VirtioNetHdr
+	var verify virtio.NetHdr
 	verify.Decode(b)
 	if verify.GsoType == target.GsoType && verify.HdrLen == target.HdrLen {
 		return b
 	}
 
 	// Fallback to BigEndian if environment dictates
-	b = make([]byte, nethdr.VirtioNetHdrLen)
+	b = make([]byte, virtio.NetHdrLen)
 	b[0] = target.Flags
 	b[1] = target.GsoType
 	binary.BigEndian.PutUint16(b[2:], target.HdrLen)
@@ -41,10 +41,10 @@ func encodeMockHdr(target nethdr.VirtioNetHdr) []byte {
 	return b
 }
 
-func makeVntBuf(vhdr nethdr.VirtioNetHdr, packet []byte) []byte {
-	buf := make([]byte, nethdr.VirtioNetHdrLen+len(packet))
-	copy(buf[:nethdr.VirtioNetHdrLen], encodeMockHdr(vhdr))
-	copy(buf[nethdr.VirtioNetHdrLen:], packet)
+func makeVntBuf(vhdr virtio.NetHdr, packet []byte) []byte {
+	buf := make([]byte, virtio.NetHdrLen+len(packet))
+	copy(buf[:virtio.NetHdrLen], encodeMockHdr(vhdr))
+	copy(buf[virtio.NetHdrLen:], packet)
 	return buf
 }
 
@@ -61,45 +61,45 @@ func TestNewVirtioGso(t *testing.T) {
 func TestProcessGso_Errors(t *testing.T) {
 	tests := []struct {
 		name      string
-		vhdr      nethdr.VirtioNetHdr
+		vhdr      virtio.NetHdr
 		packet    []byte
 		errString string
 	}{
 		{
 			name:      "short read of virtio packet (len < 1)",
-			vhdr:      nethdr.VirtioNetHdr{},
+			vhdr:      virtio.NetHdr{},
 			packet:    []byte{},
 			errString: "short read of virtio packet",
 		},
 		{
 			name:      "short read of virtio ip header (IPv4 min len)",
-			vhdr:      nethdr.VirtioNetHdr{},
+			vhdr:      virtio.NetHdr{},
 			packet:    make([]byte, 10), // Starts with 0x00 by default -> invalid version if not set
 			errString: "invalid ip header version",
 		},
 		{
 			name:      "invalid ip header version",
-			vhdr:      nethdr.VirtioNetHdr{},
+			vhdr:      virtio.NetHdr{},
 			packet:    []byte{0x50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // Version 5
 			errString: "invalid ip header version",
 		},
 		{
 			name: "short read of virtio ip header (IPv4)",
-			vhdr: nethdr.VirtioNetHdr{},
+			vhdr: virtio.NetHdr{},
 			// IPv4 version (0x40), but length < 20
 			packet:    []byte{0x40, 0, 0, 0, 0, 0},
 			errString: "short read of virtio ip header",
 		},
 		{
 			name: "short read of virtio ip header (IPv6)",
-			vhdr: nethdr.VirtioNetHdr{},
+			vhdr: virtio.NetHdr{},
 			// IPv6 version (0x60), but length < 40
 			packet:    []byte{0x60, 0, 0, 0, 0, 0},
 			errString: "short read of virtio ip header",
 		},
 		{
 			name: "GSO_NONE short read of virtio ip packet (IPv4 total len)",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoNone},
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoNone},
 			packet: func() []byte {
 				pkt := make([]byte, 20)
 				pkt[0] = 0x45
@@ -110,8 +110,8 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "invalid ipv4 virtio header length (bounds)",
-			vhdr: nethdr.VirtioNetHdr{
-				GsoType:   nethdr.VirtioNetHdrGsoTcpV4, // Added explicitly
+			vhdr: virtio.NetHdr{
+				GsoType:   virtio.VirtioNetHdrGsoTcpV4, // Added explicitly
 				CsumStart: 10,                          // < MinIPv4HdrLen
 			},
 			packet: func() []byte {
@@ -123,8 +123,8 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "invalid ipv4 virtio header length (mismatch IHL)",
-			vhdr: nethdr.VirtioNetHdr{
-				GsoType:   nethdr.VirtioNetHdrGsoTcpV4, // Added explicitly
+			vhdr: virtio.NetHdr{
+				GsoType:   virtio.VirtioNetHdrGsoTcpV4, // Added explicitly
 				CsumStart: 24,
 			},
 			packet: func() []byte {
@@ -136,8 +136,8 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "invalid ipv6 virtio header length",
-			vhdr: nethdr.VirtioNetHdr{
-				GsoType:   nethdr.VirtioNetHdrGsoUdpL4, // Added explicitly
+			vhdr: virtio.NetHdr{
+				GsoType:   virtio.VirtioNetHdrGsoUdpL4, // Added explicitly
 				CsumStart: 20,                          // IPv6 header is exactly 40
 			},
 			packet: func() []byte {
@@ -149,7 +149,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "mismatched ipv6 version and gso type",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoTcpV6, CsumStart: 20},
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoTcpV6, CsumStart: 20},
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x45 // IPv4
@@ -159,7 +159,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "mismatched ipv4 version and gso type",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoTcpV4, CsumStart: 40},
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoTcpV4, CsumStart: 40},
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x60 // IPv6
@@ -169,7 +169,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "TCP invalid tcp header length (< Min)",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 30}, // 30 - 20 = 10 < 20
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 30}, // 30 - 20 = 10 < 20
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x45
@@ -179,7 +179,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "TCP short read of virtio ip packet",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 40}, // expects 40
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 40}, // expects 40
 			packet: func() []byte {
 				pkt := make([]byte, 30) // gives 30
 				pkt[0] = 0x45
@@ -189,7 +189,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "TCP invalid tcp header length (from offset)",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 40},
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 40},
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x45
@@ -200,7 +200,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "TCP invalid virtio tcp csum_offset",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 40, CsumOffset: 12}, // Must be 16
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoTcpV4, CsumStart: 20, HdrLen: 40, CsumOffset: 12}, // Must be 16
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x45
@@ -211,7 +211,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "UDP invalid udp header length",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoUdpL4, CsumStart: 20, HdrLen: 30}, // 30 - 20 = 10 != 8
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoUdpL4, CsumStart: 20, HdrLen: 30}, // 30 - 20 = 10 != 8
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x45
@@ -221,7 +221,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "UDP short read of virtio ip packet",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoUdpL4, CsumStart: 20, HdrLen: 28},
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoUdpL4, CsumStart: 20, HdrLen: 28},
 			packet: func() []byte {
 				pkt := make([]byte, 25) // smaller than HdrLen 28
 				pkt[0] = 0x45
@@ -231,7 +231,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "UDP invalid virtio udp csum_offset",
-			vhdr: nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoUdpL4, CsumStart: 20, HdrLen: 28, CsumOffset: 6}, // Must be 8
+			vhdr: virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoUdpL4, CsumStart: 20, HdrLen: 28, CsumOffset: 6}, // Must be 8
 			packet: func() []byte {
 				pkt := make([]byte, 28)
 				pkt[0] = 0x45
@@ -241,7 +241,7 @@ func TestProcessGso_Errors(t *testing.T) {
 		},
 		{
 			name: "Unsupported GSO type",
-			vhdr: nethdr.VirtioNetHdr{GsoType: 99, CsumStart: 20},
+			vhdr: virtio.NetHdr{GsoType: 99, CsumStart: 20},
 			packet: func() []byte {
 				pkt := make([]byte, 40)
 				pkt[0] = 0x45
@@ -275,10 +275,10 @@ func TestCopyGsoPackets(t *testing.T) {
 		binary.BigEndian.PutUint32(pkt[20+4:], 50000)
 		pkt[20+13] = tcpip.TCPFlagFIN | tcpip.TCPFlagPSH | 0x10
 
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{}, pkt) // Initial buffer
+		p.buff = makeVntBuf(virtio.NetHdr{}, pkt) // Initial buffer
 		// Bypass processGso by setting fields directly
-		p.hdr = nethdr.VirtioNetHdr{
-			GsoType:    nethdr.VirtioNetHdrGsoTcpV4,
+		p.hdr = virtio.NetHdr{
+			GsoType:    virtio.VirtioNetHdrGsoTcpV4,
 			CsumStart:  20,
 			CsumOffset: 16,
 			HdrLen:     40,
@@ -317,10 +317,10 @@ func TestCopyGsoPackets(t *testing.T) {
 		// 40 (IPv6) + 8 (UDP) + 50 (Data)
 		pkt := make([]byte, 98)
 		pkt[0] = 0x60
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{}, pkt)
+		p.buff = makeVntBuf(virtio.NetHdr{}, pkt)
 
-		p.hdr = nethdr.VirtioNetHdr{
-			GsoType:    nethdr.VirtioNetHdrGsoUdpL4,
+		p.hdr = virtio.NetHdr{
+			GsoType:    virtio.VirtioNetHdrGsoUdpL4,
 			CsumStart:  40,
 			CsumOffset: 8,
 			HdrLen:     48,
@@ -345,8 +345,8 @@ func TestCopyGsoPackets(t *testing.T) {
 	t.Run("Short Buffer Scenarios", func(t *testing.T) {
 		p := NewVirtioGso()
 		pkt := make([]byte, 100) // 40 hdr + 60 payload
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{}, pkt)
-		p.hdr = nethdr.VirtioNetHdr{HdrLen: 40, GsoSize: 40}
+		p.buff = makeVntBuf(virtio.NetHdr{}, pkt)
+		p.hdr = virtio.NetHdr{HdrLen: 40, GsoSize: 40}
 		p.offset = 40
 
 		// Totally short buffer (can't hold first packet)
@@ -370,7 +370,7 @@ func TestCopyGsoPackets(t *testing.T) {
 
 	t.Run("Already Drained", func(t *testing.T) {
 		p := NewVirtioGso()
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{}, make([]byte, 50))
+		p.buff = makeVntBuf(virtio.NetHdr{}, make([]byte, 50))
 		p.offset = 100 // Exceeds packet length
 		_, err := p.copyGsoPackets(make([]byte, 100))
 		if err != errBuffDrained {
@@ -383,9 +383,9 @@ func TestCopyNonGsoPacket(t *testing.T) {
 	t.Run("With Checksum Offload", func(t *testing.T) {
 		p := NewVirtioGso()
 		pkt := make([]byte, 30)
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{}, pkt)
-		p.hdr = nethdr.VirtioNetHdr{
-			Flags:      nethdr.VirtioNetHdrNeedsCsum,
+		p.buff = makeVntBuf(virtio.NetHdr{}, pkt)
+		p.hdr = virtio.NetHdr{
+			Flags:      virtio.VirtioNetHdrNeedsCsum,
 			CsumStart:  20,
 			CsumOffset: 6,
 		}
@@ -402,7 +402,7 @@ func TestCopyNonGsoPacket(t *testing.T) {
 
 	t.Run("Short Buffer", func(t *testing.T) {
 		p := NewVirtioGso()
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{}, make([]byte, 30))
+		p.buff = makeVntBuf(virtio.NetHdr{}, make([]byte, 30))
 		_, err := p.copyNonGsoPacket(make([]byte, 10))
 		if err != tcpip.ErrShortBuffer {
 			t.Fatalf("expected ErrShortBuffer")
@@ -439,7 +439,7 @@ func TestRecv(t *testing.T) {
 		p := NewVirtioGso()
 
 		// Create a valid VIRTIO_NET_HDR_GSO_NONE packet
-		vhdr := nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoNone}
+		vhdr := virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoNone}
 		pkt := make([]byte, 20)
 		pkt[0] = 0x45
 		binary.BigEndian.PutUint16(pkt[2:], 20) // Correct IPv4 total length
@@ -470,7 +470,7 @@ func TestRecv(t *testing.T) {
 	t.Run("copyPackets returns non-Drained error directly", func(t *testing.T) {
 		p := NewVirtioGso()
 		// Setup pending payload
-		p.buff = makeVntBuf(nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoNone}, make([]byte, 20))
+		p.buff = makeVntBuf(virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoNone}, make([]byte, 20))
 
 		// Passing tiny buffer triggers ErrShortBuffer from copyPackets immediately, bypassing file read
 		_, err := p.Recv(nil, make([]byte, 5))
@@ -483,7 +483,7 @@ func TestRecv(t *testing.T) {
 		p := NewVirtioGso()
 
 		// Create a deliberately invalid packet (bad IPv4 length to fail processGso)
-		vhdr := nethdr.VirtioNetHdr{GsoType: nethdr.VirtioNetHdrGsoNone}
+		vhdr := virtio.NetHdr{GsoType: virtio.VirtioNetHdrGsoNone}
 		pkt := make([]byte, 20)
 		pkt[0] = 0x45
 		binary.BigEndian.PutUint16(pkt[2:], 100) // Exceeds packet bounds

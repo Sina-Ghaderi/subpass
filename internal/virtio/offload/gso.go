@@ -8,14 +8,14 @@ import (
 	"os"
 
 	"github.com/sina-ghaderi/subpass/internal/checksum"
-	"github.com/sina-ghaderi/subpass/internal/virtio/nethdr"
+	"github.com/sina-ghaderi/subpass/internal/virtio"
 	"github.com/sina-ghaderi/subpass/tcpip"
 )
 
-const maxOffloadSize = nethdr.VirtioNetHdrLen + maxPacketLen
+const maxOffloadSize = virtio.NetHdrLen + maxPacketLen
 
 type VirtioGso struct {
-	hdr      nethdr.VirtioNetHdr
+	hdr      virtio.NetHdr
 	buff     []byte
 	offset   int
 	counter  int
@@ -43,7 +43,7 @@ func (p *VirtioGso) Recv(f *os.File, b []byte) (int, error) {
 		return 0, err
 	}
 
-	if n < nethdr.VirtioNetHdrLen {
+	if n < virtio.NetHdrLen {
 		return 0, errors.New("short read of virtio header")
 	}
 
@@ -65,9 +65,9 @@ func (p *VirtioGso) Recv(f *os.File, b []byte) (int, error) {
 func (p *VirtioGso) copyNonGsoPacket(b []byte) (int, error) {
 
 	start, end := int(p.hdr.CsumStart), int(p.hdr.CsumOffset)
-	packet := p.buff[nethdr.VirtioNetHdrLen:]
+	packet := p.buff[virtio.NetHdrLen:]
 
-	sumFlags := p.hdr.Flags & nethdr.VirtioNetHdrNeedsCsum
+	sumFlags := p.hdr.Flags & virtio.VirtioNetHdrNeedsCsum
 
 	if sumFlags != 0 {
 		cSumAt := start + end
@@ -91,7 +91,7 @@ func (p *VirtioGso) copyPackets(b []byte) (int, error) {
 		return 0, errBuffDrained
 	}
 
-	if p.hdr.GsoType == nethdr.VirtioNetHdrGsoNone {
+	if p.hdr.GsoType == virtio.VirtioNetHdrGsoNone {
 		return p.copyNonGsoPacket(b)
 	} else {
 		return p.copyGsoPackets(b)
@@ -101,7 +101,7 @@ func (p *VirtioGso) copyPackets(b []byte) (int, error) {
 func (p *VirtioGso) copyGsoPackets(b []byte) (int, error) {
 
 	next := p.offset
-	packet := p.buff[nethdr.VirtioNetHdrLen:]
+	packet := p.buff[virtio.NetHdrLen:]
 	if next >= len(packet) {
 		return 0, errBuffDrained
 	}
@@ -198,11 +198,11 @@ func (p *VirtioGso) copyGsoPackets(b []byte) (int, error) {
 
 func (p *VirtioGso) processGso() (err error) {
 
-	var vnethdr nethdr.VirtioNetHdr
+	var vnethdr virtio.NetHdr
 	vnethdr.Decode(p.buff)
 
 	p.offset, p.counter = maxPacketLen, 0
-	packet := p.buff[nethdr.VirtioNetHdrLen:]
+	packet := p.buff[virtio.NetHdrLen:]
 
 	iphlen := int(vnethdr.CsumStart)
 	trhlen := int(vnethdr.HdrLen) - int(vnethdr.CsumStart)
@@ -227,7 +227,7 @@ func (p *VirtioGso) processGso() (err error) {
 		return errors.New("invalid ip header version")
 	}
 
-	if vnethdr.GsoType == nethdr.VirtioNetHdrGsoNone {
+	if vnethdr.GsoType == virtio.VirtioNetHdrGsoNone {
 		var total uint16
 
 		if version == tcpip.IPv4 {
@@ -262,15 +262,15 @@ func (p *VirtioGso) processGso() (err error) {
 	var cSumAt uint16
 
 	switch vnethdr.GsoType {
-	case nethdr.VirtioNetHdrGsoTcpV4,
-		nethdr.VirtioNetHdrGsoTcpV6:
+	case virtio.VirtioNetHdrGsoTcpV4,
+		virtio.VirtioNetHdrGsoTcpV6:
 
-		if vnethdr.GsoType == nethdr.VirtioNetHdrGsoTcpV6 &&
+		if vnethdr.GsoType == virtio.VirtioNetHdrGsoTcpV6 &&
 			version != tcpip.IPv6 {
 			return errors.New("mismatched ipv6 version and gso type")
 		}
 
-		if vnethdr.GsoType == nethdr.VirtioNetHdrGsoTcpV4 &&
+		if vnethdr.GsoType == virtio.VirtioNetHdrGsoTcpV4 &&
 			version != tcpip.IPv4 {
 			return errors.New("mismatched ipv4 version and gso type")
 		}
@@ -303,7 +303,7 @@ func (p *VirtioGso) processGso() (err error) {
 		p.firstSeq = binary.BigEndian.Uint32(packet[iphlen+4:])
 		cSumAt = vnethdr.CsumStart + 16
 
-	case nethdr.VirtioNetHdrGsoUdpL4:
+	case virtio.VirtioNetHdrGsoUdpL4:
 
 		if trhlen != tcpip.FixUDPHdrLen {
 			return errors.New("invalid udp header length")

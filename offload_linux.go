@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sina-ghaderi/subpass/internal/virtio/nethdr"
+	"github.com/sina-ghaderi/subpass/internal/virtio"
 	"github.com/sina-ghaderi/subpass/internal/virtio/offload"
 	"github.com/sina-ghaderi/subpass/tcpip"
 	"golang.org/x/sys/unix"
@@ -207,7 +207,7 @@ func setTunNetHdrSize(file *os.File) error {
 	var opErr error
 	err = sysconn.Control(func(fd uintptr) {
 		opErr = unix.IoctlSetPointerInt(int(fd),
-			unix.TUNSETVNETHDRSZ, nethdr.VirtioNetHdrLen)
+			unix.TUNSETVNETHDRSZ, virtio.NetHdrLen)
 	})
 	if err != nil {
 		return err

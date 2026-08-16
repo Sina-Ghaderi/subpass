@@ -1,4 +1,4 @@
-package nethdr
+package virtio
 
 import (
 	"errors"
@@ -20,9 +20,9 @@ const (
 	VirtioNetHdrGsoEcn   = 0x80
 )
 
-const VirtioNetHdrLen = int(unsafe.Sizeof(VirtioNetHdr{}))
+const NetHdrLen = int(unsafe.Sizeof(NetHdr{}))
 
-type VirtioNetHdr struct {
+type NetHdr struct {
 	Flags      uint8
 	GsoType    uint8
 	HdrLen     uint16
@@ -32,20 +32,20 @@ type VirtioNetHdr struct {
 	NumBuffers uint16
 }
 
-func (v *VirtioNetHdr) Decode(b []byte) error {
-	if len(b) < VirtioNetHdrLen {
+func (v *NetHdr) Decode(b []byte) error {
+	if len(b) < NetHdrLen {
 		return errors.New("short nethdr buffer length")
 	}
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(v)),
-		VirtioNetHdrLen), b[:VirtioNetHdrLen])
+		NetHdrLen), b[:NetHdrLen])
 	return nil
 }
 
-func (v *VirtioNetHdr) Encode(b []byte) error {
-	if len(b) < VirtioNetHdrLen {
+func (v *NetHdr) Encode(b []byte) error {
+	if len(b) < NetHdrLen {
 		return errors.New("short nethdr buffer length")
 	}
-	copy(b[:VirtioNetHdrLen],
-		unsafe.Slice((*byte)(unsafe.Pointer(v)), VirtioNetHdrLen))
+	copy(b[:NetHdrLen],
+		unsafe.Slice((*byte)(unsafe.Pointer(v)), NetHdrLen))
 	return nil
 }
