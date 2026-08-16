@@ -97,7 +97,10 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	control.Unit = uint32(index) + 1
 
 	if err = unix.Connect(fd, control); err != nil {
-		return tun, fmt.Errorf("connect socket: %w", err)
+		if errors.Is(err, unix.EBUSY) {
+			err = os.ErrExist
+		}
+		return tun, fmt.Errorf("create tunnel: %w", err)
 	}
 
 	const UTUN_OPT_IFNAME = 2
