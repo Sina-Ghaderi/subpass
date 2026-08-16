@@ -67,7 +67,7 @@ func (p *VirtioGso) copyNonGsoPacket(b []byte) (int, error) {
 	start, end := int(p.hdr.CsumStart), int(p.hdr.CsumOffset)
 	packet := p.buff[virtio.NetHdrLen:]
 
-	sumFlags := p.hdr.Flags & virtio.VirtioNetHdrNeedsCsum
+	sumFlags := p.hdr.Flags & virtio.VirtioNetHdrNeedsCSUM
 
 	if sumFlags != 0 {
 		cSumAt := start + end
@@ -262,15 +262,14 @@ func (p *VirtioGso) processGso() (err error) {
 	var cSumAt uint16
 
 	switch vnethdr.GsoType {
-	case virtio.VirtioNetHdrGsoTcpV4,
-		virtio.VirtioNetHdrGsoTcpV6:
+	case virtio.VirtioNetHdrGsoTCPV4, virtio.VirtioNetHdrGsoTCPV6:
 
-		if vnethdr.GsoType == virtio.VirtioNetHdrGsoTcpV6 &&
+		if vnethdr.GsoType == virtio.VirtioNetHdrGsoTCPV6 &&
 			version != tcpip.IPv6 {
 			return errors.New("mismatched ipv6 version and gso type")
 		}
 
-		if vnethdr.GsoType == virtio.VirtioNetHdrGsoTcpV4 &&
+		if vnethdr.GsoType == virtio.VirtioNetHdrGsoTCPV4 &&
 			version != tcpip.IPv4 {
 			return errors.New("mismatched ipv4 version and gso type")
 		}
@@ -303,7 +302,7 @@ func (p *VirtioGso) processGso() (err error) {
 		p.firstSeq = binary.BigEndian.Uint32(packet[iphlen+4:])
 		cSumAt = vnethdr.CsumStart + 16
 
-	case virtio.VirtioNetHdrGsoUdpL4:
+	case virtio.VirtioNetHdrGsoUDPL4:
 
 		if trhlen != tcpip.FixUDPHdrLen {
 			return errors.New("invalid udp header length")

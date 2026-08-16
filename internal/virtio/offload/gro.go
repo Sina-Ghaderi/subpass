@@ -585,7 +585,7 @@ func (t *flowTable) prepareMegaPacket(mega megaPacket, buf []byte) []byte {
 	}
 
 	hdrInfo := &virtio.NetHdr{
-		Flags:      virtio.VirtioNetHdrNeedsCsum,
+		Flags:      virtio.VirtioNetHdrNeedsCSUM,
 		HdrLen:     uint16(mega.iphlen + mega.trhlen),
 		GsoSize:    mega.gsosize,
 		CsumStart:  uint16(mega.iphlen),
@@ -598,7 +598,7 @@ func (t *flowTable) prepareMegaPacket(mega megaPacket, buf []byte) []byte {
 
 	switch mega.version {
 	case tcpip.IPv6:
-		hdrInfo.GsoType = virtio.VirtioNetHdrGsoTcpV6
+		hdrInfo.GsoType = virtio.VirtioNetHdrGsoTCPV6
 
 		iph := tcpip.IPv6Header(header)
 		payloadLen := mega.datalen + len(header) - int(mega.iphlen)
@@ -607,7 +607,7 @@ func (t *flowTable) prepareMegaPacket(mega megaPacket, buf []byte) []byte {
 		dst = iph.DstAddr()
 
 	case tcpip.IPv4:
-		hdrInfo.GsoType = virtio.VirtioNetHdrGsoTcpV4
+		hdrInfo.GsoType = virtio.VirtioNetHdrGsoTCPV4
 		iph := tcpip.IPv4Header(header)
 		iph.SetChecksum(0)
 		totalLen := mega.datalen + len(header)
@@ -630,7 +630,7 @@ func (t *flowTable) prepareMegaPacket(mega megaPacket, buf []byte) []byte {
 
 	} else {
 		hdrInfo.CsumOffset = 6
-		hdrInfo.GsoType = virtio.VirtioNetHdrGsoUdpL4
+		hdrInfo.GsoType = virtio.VirtioNetHdrGsoUDPL4
 		psum := checksum.HeaderChecksumNoFold(mega.proto, src, dst, slen)
 		udph := tcpip.UDPHeader(segment)
 		udph.SetChecksum(checksum.Checksum(nil, psum))

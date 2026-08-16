@@ -6,18 +6,18 @@ import (
 )
 
 const (
-	VirtioNetHdrNeedsCsum = 0x1
+	VirtioNetHdrNeedsCSUM = 0x1
 	VirtioNetHdrDataValid = 0x2
-	VirtioNetHdrRscInfo   = 0x4
+	VirtioNetHdrRSCInfo   = 0x4
 )
 
 const (
 	VirtioNetHdrGsoNone  = 0x0
-	VirtioNetHdrGsoTcpV4 = 0x1
-	VirtioNetHdrGsoUdp   = 0x3
-	VirtioNetHdrGsoTcpV6 = 0x4
-	VirtioNetHdrGsoUdpL4 = 0x5
-	VirtioNetHdrGsoEcn   = 0x80
+	VirtioNetHdrGsoTCPV4 = 0x1
+	VirtioNetHdrGsoUDP   = 0x3
+	VirtioNetHdrGsoTCPV6 = 0x4
+	VirtioNetHdrGsoUDPL4 = 0x5
+	VirtioNetHdrGsoECN   = 0x80
 )
 
 const NetHdrLen = int(unsafe.Sizeof(NetHdr{}))

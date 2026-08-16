@@ -17,15 +17,15 @@ func TestFlagAndGsoTypeConstants(t *testing.T) {
 		got  int
 		want int
 	}{
-		{"VIRTIO_NET_HDR_F_NEEDS_CSUM", VirtioNetHdrNeedsCsum, 0x1},
+		{"VIRTIO_NET_HDR_F_NEEDS_CSUM", VirtioNetHdrNeedsCSUM, 0x1},
 		{"VIRTIO_NET_HDR_F_DATA_VALID", VirtioNetHdrDataValid, 0x2},
-		{"VIRTIO_NET_HDR_F_RSC_INFO", VirtioNetHdrRscInfo, 0x4},
+		{"VIRTIO_NET_HDR_F_RSC_INFO", VirtioNetHdrRSCInfo, 0x4},
 		{"VIRTIO_NET_HDR_GSO_NONE", VirtioNetHdrGsoNone, 0x0},
-		{"VIRTIO_NET_HDR_GSO_TCPV4", VirtioNetHdrGsoTcpV4, 0x1},
-		{"VIRTIO_NET_HDR_GSO_UDP", VirtioNetHdrGsoUdp, 0x3},
-		{"VIRTIO_NET_HDR_GSO_TCPV6", VirtioNetHdrGsoTcpV6, 0x4},
-		{"VIRTIO_NET_HDR_GSO_UDP_L4", VirtioNetHdrGsoUdpL4, 0x5},
-		{"VIRTIO_NET_HDR_GSO_ECN", VirtioNetHdrGsoEcn, 0x80},
+		{"VIRTIO_NET_HDR_GSO_TCPV4", VirtioNetHdrGsoTCPV4, 0x1},
+		{"VIRTIO_NET_HDR_GSO_UDP", VirtioNetHdrGsoUDP, 0x3},
+		{"VIRTIO_NET_HDR_GSO_TCPV6", VirtioNetHdrGsoTCPV6, 0x4},
+		{"VIRTIO_NET_HDR_GSO_UDP_L4", VirtioNetHdrGsoUDPL4, 0x5},
+		{"VIRTIO_NET_HDR_GSO_ECN", VirtioNetHdrGsoECN, 0x80},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
