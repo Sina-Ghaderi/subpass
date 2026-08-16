@@ -110,7 +110,7 @@ func createTunOffload(config *Config) (tun *tunOffload, err error) {
 	tun = &tunOffload{name: tunName}
 	tun.file = os.NewFile(uintptr(fd), tunName)
 
-	if err = setTunNetHdrLen(tun.file); err != nil {
+	if err = setTunNetHdrSize(tun.file); err != nil {
 		return tun, fmt.Errorf("set nethdr size: %w", err)
 	}
 
@@ -197,7 +197,7 @@ func (tun *tunOffload) Close() error {
 	return err
 }
 
-func setTunNetHdrLen(file *os.File) error {
+func setTunNetHdrSize(file *os.File) error {
 
 	sysconn, err := file.SyscallConn()
 	if err != nil {
