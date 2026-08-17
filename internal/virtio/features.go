@@ -33,3 +33,16 @@ const (
 	FeatureNetStandby           uint64 = 1 << 62
 	FeatureNetSpeedDuplex       uint64 = 1 << 63
 )
+const (
+	FeatureIndirectDesc     uint64 = 1 << 28
+	FeatureEventIdx         uint64 = 1 << 29
+	FeatureVersion1         uint64 = 1 << 32
+	FeatureAccessPlatform   uint64 = 1 << 33
+	FeatureRingPacked       uint64 = 1 << 34
+	FeatureInOrder          uint64 = 1 << 35
+	FeatureOrderPlatform    uint64 = 1 << 36
+	FeatureSRIOV            uint64 = 1 << 37
+	FeatureNotificationData uint64 = 1 << 38
+	FeatureNotifConfigData  uint64 = 1 << 39
+	FeatureRingReset        uint64 = 1 << 40
+)
