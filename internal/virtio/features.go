@@ -1,48 +1,50 @@
 package virtio
 
+type Feature uint64
+
 const (
-	FeatureNetCSUM              uint64 = 1 << 0
-	FeatureNetGuestCSUM         uint64 = 1 << 1
-	FeatureNetCtrlGuestOffloads uint64 = 1 << 2
-	FeatureNetMTU               uint64 = 1 << 3
-	FeatureNetMAC               uint64 = 1 << 5
-	FeatureNetGSO               uint64 = 1 << 6
-	FeatureNetGuestRSC4         uint64 = 1 << 41
-	FeatureNetGuestRSC6         uint64 = 1 << 42
-	FeatureNetGuestTSO4         uint64 = 1 << 7
-	FeatureNetGuestTSO6         uint64 = 1 << 8
-	FeatureNetGuestECN          uint64 = 1 << 9
-	FeatureNetGuestUFO          uint64 = 1 << 10
-	FeatureNetHostTSO4          uint64 = 1 << 11
-	FeatureNetHostTSO6          uint64 = 1 << 12
-	FeatureNetHostECN           uint64 = 1 << 13
-	FeatureNetHostUFO           uint64 = 1 << 14
-	FeatureNetMRGRXBUF          uint64 = 1 << 15
-	FeatureNetSTATUS            uint64 = 1 << 16
-	FeatureNetCtrlVQ            uint64 = 1 << 17
-	FeatureNetCtrlRX            uint64 = 1 << 18
-	FeatureNetCtrlVLAN          uint64 = 1 << 19
-	FeatureNetGuestAnnounce     uint64 = 1 << 21
-	FeatureNetMQ                uint64 = 1 << 22
-	FeatureNetCtrlMACAddr       uint64 = 1 << 23
-	FeatureNetHostUSO           uint64 = 1 << 56
-	FeatureNetHashReport        uint64 = 1 << 57
-	FeatureNetGuestHdrLen       uint64 = 1 << 59
-	FeatureNetRSS               uint64 = 1 << 60
-	FeatureNetRSCExt            uint64 = 1 << 61
-	FeatureNetStandby           uint64 = 1 << 62
-	FeatureNetSpeedDuplex       uint64 = 1 << 63
+	FeatureNetCSUM              Feature = 1 << 0
+	FeatureNetGuestCSUM         Feature = 1 << 1
+	FeatureNetCtrlGuestOffloads Feature = 1 << 2
+	FeatureNetMTU               Feature = 1 << 3
+	FeatureNetMAC               Feature = 1 << 5
+	FeatureNetGSO               Feature = 1 << 6
+	FeatureNetGuestRSC4         Feature = 1 << 41
+	FeatureNetGuestRSC6         Feature = 1 << 42
+	FeatureNetGuestTSO4         Feature = 1 << 7
+	FeatureNetGuestTSO6         Feature = 1 << 8
+	FeatureNetGuestECN          Feature = 1 << 9
+	FeatureNetGuestUFO          Feature = 1 << 10
+	FeatureNetHostTSO4          Feature = 1 << 11
+	FeatureNetHostTSO6          Feature = 1 << 12
+	FeatureNetHostECN           Feature = 1 << 13
+	FeatureNetHostUFO           Feature = 1 << 14
+	FeatureNetMRGRXBUF          Feature = 1 << 15
+	FeatureNetSTATUS            Feature = 1 << 16
+	FeatureNetCtrlVQ            Feature = 1 << 17
+	FeatureNetCtrlRX            Feature = 1 << 18
+	FeatureNetCtrlVLAN          Feature = 1 << 19
+	FeatureNetGuestAnnounce     Feature = 1 << 21
+	FeatureNetMQ                Feature = 1 << 22
+	FeatureNetCtrlMACAddr       Feature = 1 << 23
+	FeatureNetHostUSO           Feature = 1 << 56
+	FeatureNetHashReport        Feature = 1 << 57
+	FeatureNetGuestHdrLen       Feature = 1 << 59
+	FeatureNetRSS               Feature = 1 << 60
+	FeatureNetRSCExt            Feature = 1 << 61
+	FeatureNetStandby           Feature = 1 << 62
+	FeatureNetSpeedDuplex       Feature = 1 << 63
 )
 const (
-	FeatureIndirectDesc     uint64 = 1 << 28
-	FeatureEventIdx         uint64 = 1 << 29
-	FeatureVersion1         uint64 = 1 << 32
-	FeatureAccessPlatform   uint64 = 1 << 33
-	FeatureRingPacked       uint64 = 1 << 34
-	FeatureInOrder          uint64 = 1 << 35
-	FeatureOrderPlatform    uint64 = 1 << 36
-	FeatureSRIOV            uint64 = 1 << 37
-	FeatureNotificationData uint64 = 1 << 38
-	FeatureNotifConfigData  uint64 = 1 << 39
-	FeatureRingReset        uint64 = 1 << 40
+	FeatureIndirectDesc     Feature = 1 << 28
+	FeatureEventIdx         Feature = 1 << 29
+	FeatureVersion1         Feature = 1 << 32
+	FeatureAccessPlatform   Feature = 1 << 33
+	FeatureRingPacked       Feature = 1 << 34
+	FeatureInOrder          Feature = 1 << 35
+	FeatureOrderPlatform    Feature = 1 << 36
+	FeatureSRIOV            Feature = 1 << 37
+	FeatureNotificationData Feature = 1 << 38
+	FeatureNotifConfigData  Feature = 1 << 39
+	FeatureRingReset        Feature = 1 << 40
 )
