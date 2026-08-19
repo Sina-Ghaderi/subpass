@@ -80,14 +80,25 @@ func openGenericTun(config *Config) (*tunDevice, error) {
 }
 
 func createTunDevice(config *Config) (tun *tunDevice, err error) {
-
-	if err = validateName(config.Name); err != nil {
+	tun = &tunDevice{}
+	tun.file, err = createGenericTun(config, 0)
+	if err != nil {
 		return
+	}
+
+	tun.name = tun.file.Name()
+	return
+}
+
+func createGenericTun(config *Config, addflags uint16) (*os.File, error) {
+
+	if err := validateName(config.Name); err != nil {
+		return nil, err
 	}
 
 	fd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
 	if err != nil {
-		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
+		return nil, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
 	}
 
 	defer func() {
@@ -98,10 +109,11 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	ifreq, err := unix.NewIfreq(config.Name)
 	if err != nil {
-		return tun, errors.New("interface name too long")
+		return nil, errors.New("interface name too long")
 	}
 
-	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN | unix.IFF_TUN_EXCL)
+	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN)
+	flags |= addflags | unix.IFF_TUN_EXCL
 	if config.MultiQueue {
 		flags |= unix.IFF_MULTI_QUEUE
 	}
@@ -112,7 +124,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 		if errors.Is(err, unix.EBUSY) {
 			err = os.ErrExist
 		}
-		return tun, fmt.Errorf("create tunnel: %w", err)
+		return nil, fmt.Errorf("create tunnel: %w", err)
 	}
 
 	tunName := ifreq.Name()
@@ -124,7 +136,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 
 	err = unix.IoctlSetInt(fd, unix.TUNSETPERSIST, value)
 	if err != nil {
-		return tun, fmt.Errorf("set persist mode: %w", err)
+		return nil, fmt.Errorf("set persist mode: %w", err)
 	}
 
 	defer func() {
@@ -134,17 +146,15 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	}()
 
 	if err = tunDevicePermisstions(fd, config); err != nil {
-		return
+		return nil, err
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
-		return tun, fmt.Errorf("set nonblock: %w", err)
+		return nil, fmt.Errorf("set nonblock: %w", err)
 	}
 
-	tun = &tunDevice{}
-	tun.file = os.NewFile(uintptr(fd), tunName)
-	tun.name = tunName
-	return
+	file := os.NewFile(uintptr(fd), tunName)
+	return file, err
 }
 
 func (tun *tunDevice) Name() (name string) { return tun.name }

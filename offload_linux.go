@@ -46,83 +46,23 @@ func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
 
 func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
 
-	if config.EnableOffloads && config.UseVHostNet {
-		return nil, fmt.Errorf("offloads cannot be used with vhost-net")
-	}
-
-	if err = validateName(config.Name); err != nil {
+	tun = new(tunDeviceOffload)
+	tun.file, err = createGenericTun(config, 0)
+	if err != nil {
 		return
 	}
 
-	fd, err := unix.Open(tunModuleCharPath, tunOpenMode, 0)
-	if err != nil {
-		return tun, fmt.Errorf("open %s: %w", tunModuleCharPath, err)
-	}
-
-	defer func() {
-		if err != nil {
-			unix.Close(fd)
-		}
-	}()
-
-	ifreq, err := unix.NewIfreq(config.Name)
-	if err != nil {
-		return tun, errors.New("interface name too long")
-	}
-
-	flags := uint16(unix.IFF_NO_PI | unix.IFF_TUN | unix.IFF_TUN_EXCL |
-		unix.IFF_VNET_HDR)
-	if config.MultiQueue {
-		flags |= unix.IFF_MULTI_QUEUE
-	}
-
-	ifreq.SetUint16(flags)
-
-	if err = unix.IoctlIfreq(fd, unix.TUNSETIFF, ifreq); err != nil {
-		if errors.Is(err, unix.EBUSY) {
-			err = os.ErrExist
-		}
-		return tun, fmt.Errorf("create tunnel: %w", err)
-	}
-
-	var value int
-	if config.Persist {
-		value++
-	}
-
-	err = unix.IoctlSetInt(fd, unix.TUNSETPERSIST, value)
-	if err != nil {
-		return tun, fmt.Errorf("set persist mode: %w", err)
-	}
-
-	tunName := ifreq.Name()
-
-	defer func() {
-		if err != nil && value > 0 {
-			Destroy(tunName)
-		}
-	}()
-
-	if err = tunDevicePermisstions(fd, config); err != nil {
-		return
-	}
-
-	if err = unix.SetNonblock(fd, true); err != nil {
-		return tun, fmt.Errorf("set nonblock: %w", err)
-	}
-
-	tun = &tunDeviceOffload{name: tunName}
-	tun.file = os.NewFile(uintptr(fd), tunName)
+	tun.name = tun.file.Name()
 
 	if err = setTunNetHdrSize(tun.file); err != nil {
-		return tun, fmt.Errorf("set nethdr size: %w", err)
+		return tun, fmt.Errorf("set virtio nethdr size: %w", err)
 	}
 
 	var udp bool
 
 	udp, err = setTunOffloads(tun.file)
 	if err != nil {
-		return tun, fmt.Errorf("set offloads: %w", err)
+		return tun, fmt.Errorf("set virtio offloads: %w", err)
 	}
 
 	tun.gso = offloads.NewVirtioGso()
