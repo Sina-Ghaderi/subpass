@@ -9,10 +9,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sina-ghaderi/subpass/internal/virtio"
-	"github.com/sina-ghaderi/subpass/internal/virtio/offload"
-	"github.com/sina-ghaderi/subpass/tcpip"
+	"github.com/sina-ghaderi/tcpip"
 	"golang.org/x/sys/unix"
+
+	"github.com/sina-ghaderi/virtio/net"
+	"github.com/sina-ghaderi/virtio/offloads"
 )
 
 const tcpOffloads = unix.TUN_F_CSUM | unix.TUN_F_TSO4 | unix.TUN_F_TSO6
@@ -22,8 +23,8 @@ type tunDeviceOffload struct {
 	readMutex  sync.Mutex
 	writeMutex sync.Mutex
 	file       *os.File
-	gso        *offload.VirtioGso
-	gro        *offload.VirtioGro
+	gso        *offloads.VirtioGso
+	gro        *offloads.VirtioGro
 	closed     atomic.Bool
 	name       string
 }
@@ -45,7 +46,7 @@ func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
 
 func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
 
-	if config.EnableOffloads && config.UseVhostNet {
+	if config.EnableOffloads && config.UseVHostNet {
 		return nil, fmt.Errorf("offloads cannot be used with vhost-net")
 	}
 
@@ -124,8 +125,8 @@ func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
 		return tun, fmt.Errorf("set offloads: %w", err)
 	}
 
-	tun.gso = offload.NewVirtioGso()
-	tun.gro = offload.NewVirtioGro(udp)
+	tun.gso = offloads.NewVirtioGso()
+	tun.gro = offloads.NewVirtioGro(udp)
 	return
 }
 
@@ -210,7 +211,7 @@ func setTunNetHdrSize(file *os.File) error {
 	var opErr error
 	err = sysconn.Control(func(fd uintptr) {
 		opErr = unix.IoctlSetPointerInt(int(fd),
-			unix.TUNSETVNETHDRSZ, virtio.NetHdrLen)
+			unix.TUNSETVNETHDRSZ, net.VirtioNetHdrLen)
 	})
 	if err != nil {
 		return err

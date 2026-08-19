@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/sina-ghaderi/subpass/tcpip"
+	"github.com/sina-ghaderi/tcpip"
 	"golang.org/x/sys/unix"
 )
 

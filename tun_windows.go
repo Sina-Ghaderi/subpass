@@ -10,8 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sina-ghaderi/subpass/internal/wintun"
-	"github.com/sina-ghaderi/subpass/tcpip"
+	"github.com/sina-ghaderi/subpass/wintun"
+	"github.com/sina-ghaderi/tcpip"
 	"golang.org/x/sys/windows"
 )
 
@@ -52,8 +52,6 @@ type tunDevice struct {
 }
 
 func (tun *tunDevice) LUID() uint64 { return tun.adaptor.LUID() }
-
-func WintunDriverVersion() string { return wintun.Version() }
 
 func openTunDevice(config *Config) (*tunDevice, error) {
 	dev, err := createTunDevice(config)

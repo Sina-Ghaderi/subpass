@@ -30,7 +30,8 @@ type Config struct {
 	Persist        bool
 	MultiQueue     bool
 	EnableOffloads bool
-	UseVhostNet    bool
+	UseVHostNet    bool
+	VRingSize      int
 }
 
 type Permissions struct {
@@ -55,7 +56,7 @@ func openTunDevice(config *Config) (Tun, error) {
 	switch {
 	case config.EnableOffloads:
 		return openOffloadTun(config)
-	case config.UseVhostNet:
+	case config.UseVHostNet:
 		// TODO:
 	}
 

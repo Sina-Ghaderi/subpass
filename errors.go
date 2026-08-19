@@ -3,7 +3,7 @@ package subpass
 import (
 	"errors"
 
-	"github.com/sina-ghaderi/subpass/tcpip"
+	"github.com/sina-ghaderi/tcpip"
 )
 
 var ErrShortBuffer = errors.New("packet length exceeds user buffer")
