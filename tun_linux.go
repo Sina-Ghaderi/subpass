@@ -31,7 +31,6 @@ type Config struct {
 	MultiQueue     bool
 	EnableOffloads bool
 	UseVHostNet    bool
-	VRingSize      int
 }
 
 type Permissions struct {
@@ -49,15 +48,15 @@ type tunDevice struct {
 
 func defaltOSparms() Config { return Config{} }
 
-var validIfaceRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
+var validIfaceNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 func openTunDevice(config *Config) (Tun, error) {
 
 	switch {
+	case config.UseVHostNet:
+		// return openVHostNetTun(config)
 	case config.EnableOffloads:
 		return openOffloadTun(config)
-	case config.UseVHostNet:
-		// TODO:
 	}
 
 	return openGenericTun(config)
@@ -81,7 +80,7 @@ func openGenericTun(config *Config) (*tunDevice, error) {
 
 func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	tun = &tunDevice{}
-	tun.file, err = createGenericTun(config, 0)
+	tun.file, err = createTunWithFlags(config, 0)
 	if err != nil {
 		return
 	}
@@ -90,7 +89,7 @@ func createTunDevice(config *Config) (tun *tunDevice, err error) {
 	return
 }
 
-func createGenericTun(config *Config, addflags uint16) (*os.File, error) {
+func createTunWithFlags(config *Config, addflags uint16) (*os.File, error) {
 
 	if err := validateName(config.Name); err != nil {
 		return nil, err
@@ -339,7 +338,7 @@ func validateName(name string) error {
 		return errors.New("invalid interface name")
 	}
 
-	if !validIfaceRegex.MatchString(name) {
+	if !validIfaceNameRegex.MatchString(name) {
 		return errors.New("invalid interface name")
 	}
 

@@ -3,30 +3,23 @@
 package subpass
 
 import (
-	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"sync/atomic"
 
 	"github.com/sina-ghaderi/tcpip"
-	"golang.org/x/sys/unix"
-
-	"github.com/sina-ghaderi/virtio/net"
 	"github.com/sina-ghaderi/virtio/offloads"
+	"golang.org/x/sys/unix"
 )
 
-const tcpOffloads = unix.TUN_F_CSUM | unix.TUN_F_TSO4 | unix.TUN_F_TSO6
-const udpOffloads = unix.TUN_F_USO4 | unix.TUN_F_USO6
-
 type tunDeviceOffload struct {
-	readMutex  sync.Mutex
-	writeMutex sync.Mutex
-	file       *os.File
-	gso        *offloads.VirtioGso
-	gro        *offloads.VirtioGro
+	offloads   io.ReadWriteCloser
 	closed     atomic.Bool
 	name       string
+	readMutex  sync.Mutex
+	writeMutex sync.Mutex
 }
 
 func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
@@ -36,8 +29,8 @@ func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
 	}
 
 	err = fmt.Errorf("open device: %w", err)
-	if dev != nil && dev.file != nil {
-		dev.file.Close()
+	if dev != nil && dev.offloads != nil {
+		dev.offloads.Close()
 	}
 
 	dev = nil
@@ -46,27 +39,19 @@ func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
 
 func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
 
-	tun = new(tunDeviceOffload)
-	tun.file, err = createGenericTun(config, 0)
+	file, err := createTunWithFlags(config, unix.IFF_VNET_HDR)
 	if err != nil {
 		return
 	}
 
-	tun.name = tun.file.Name()
+	defer func() {
+		if err != nil {
+			file.Close()
+		}
+	}()
 
-	if err = setTunNetHdrSize(tun.file); err != nil {
-		return tun, fmt.Errorf("set virtio nethdr size: %w", err)
-	}
-
-	var udp bool
-
-	udp, err = setTunOffloads(tun.file)
-	if err != nil {
-		return tun, fmt.Errorf("set virtio offloads: %w", err)
-	}
-
-	tun.gso = offloads.NewVirtioGso()
-	tun.gro = offloads.NewVirtioGro(udp)
+	tun = &tunDeviceOffload{name: file.Name()}
+	tun.offloads, err = offloads.NewOffloads(file)
 	return
 }
 
@@ -90,7 +75,7 @@ func (tun *tunDeviceOffload) Read(b []byte) (int, error) {
 	tun.readMutex.Lock()
 	defer tun.readMutex.Unlock()
 
-	n, err := tun.gso.Recv(tun.file, b)
+	n, err := tun.offloads.Read(b)
 	switch err {
 	case nil:
 	case tcpip.ErrShortBuffer:
@@ -111,7 +96,7 @@ func (tun *tunDeviceOffload) Write(b []byte) (int, error) {
 	tun.writeMutex.Lock()
 	defer tun.writeMutex.Unlock()
 
-	n, err := tun.gro.Send(tun.file, b)
+	n, err := tun.offloads.Write(b)
 	switch err {
 	case nil:
 	case tcpip.ErrShortBuffer:
@@ -130,8 +115,8 @@ func (tun *tunDeviceOffload) Close() error {
 	}
 
 	var err error
-	if tun.file != nil {
-		err = tun.file.Close()
+	if tun.offloads != nil {
+		err = tun.offloads.Close()
 	}
 
 	if err != nil {
@@ -139,76 +124,4 @@ func (tun *tunDeviceOffload) Close() error {
 	}
 
 	return err
-}
-
-func setTunNetHdrSize(file *os.File) error {
-
-	sysconn, err := file.SyscallConn()
-	if err != nil {
-		return err
-	}
-
-	var opErr error
-	err = sysconn.Control(func(fd uintptr) {
-		opErr = unix.IoctlSetPointerInt(int(fd),
-			unix.TUNSETVNETHDRSZ, net.VirtioNetHdrLen)
-	})
-	if err != nil {
-		return err
-	}
-
-	if opErr != nil {
-		return opErr
-	}
-
-	return nil
-}
-
-func setTunOffloads(file *os.File) (bool, error) {
-
-	sysconn, err := file.SyscallConn()
-	if err != nil {
-		return false, err
-	}
-
-	var opErr error
-	var ifreq unix.Ifreq
-	var udpEnable bool
-
-	err = sysconn.Control(func(fd uintptr) {
-		opErr = unix.IoctlIfreq(int(fd), unix.TUNGETIFF, &ifreq)
-		if opErr != nil {
-			return
-		}
-
-		flags := ifreq.Uint16()
-		if flags&unix.IFF_VNET_HDR == 0 {
-			opErr = errors.New("kernel did not grant virtio nethdr")
-			return
-		}
-
-		opErr = unix.IoctlSetInt(int(fd),
-			unix.TUNSETOFFLOAD, tcpOffloads)
-		if opErr != nil {
-			return
-		}
-
-		udpErr := unix.IoctlSetInt(
-			int(fd),
-			unix.TUNSETOFFLOAD,
-			tcpOffloads|udpOffloads,
-		)
-
-		udpEnable = udpErr == nil
-	})
-
-	if err != nil {
-		return false, err
-	}
-
-	if opErr != nil {
-		return false, opErr
-	}
-
-	return udpEnable, nil
 }
