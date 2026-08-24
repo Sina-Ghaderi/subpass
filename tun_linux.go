@@ -54,34 +54,18 @@ func openTunDevice(config *Config) (Tun, error) {
 
 	switch {
 	case config.UseVHostNet:
-		// return openVHostNetTun(config)
 	case config.EnableOffloads:
-		return openOffloadTun(config)
+		return openOffloadedTun(config)
 	}
 
 	return openGenericTun(config)
 }
 
-func openGenericTun(config *Config) (*tunDevice, error) {
-
-	dev, err := createTunDevice(config)
-	if err == nil {
-		return dev, err
-	}
-
-	err = fmt.Errorf("open device: %w", err)
-	if dev != nil && dev.file != nil {
-		dev.file.Close()
-	}
-
-	dev = nil
-	return dev, err
-}
-
-func createTunDevice(config *Config) (tun *tunDevice, err error) {
+func openGenericTun(config *Config) (tun *tunDevice, err error) {
 	tun = &tunDevice{}
 	tun.file, err = createTunWithFlags(config, 0)
 	if err != nil {
+		err = fmt.Errorf("open device: %w", err)
 		return
 	}
 

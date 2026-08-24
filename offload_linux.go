@@ -22,25 +22,11 @@ type tunDeviceOffload struct {
 	writeMutex sync.Mutex
 }
 
-func openOffloadTun(config *Config) (*tunDeviceOffload, error) {
-	dev, err := createTunOffload(config)
-	if err == nil {
-		return dev, err
-	}
-
-	err = fmt.Errorf("open device: %w", err)
-	if dev != nil && dev.offloads != nil {
-		dev.offloads.Close()
-	}
-
-	dev = nil
-	return dev, err
-}
-
-func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
+func openOffloadedTun(config *Config) (tun *tunDeviceOffload, err error) {
 
 	file, err := createTunWithFlags(config, unix.IFF_VNET_HDR)
 	if err != nil {
+		err = fmt.Errorf("open device: %w", err)
 		return
 	}
 
@@ -51,7 +37,11 @@ func createTunOffload(config *Config) (tun *tunDeviceOffload, err error) {
 	}()
 
 	tun = &tunDeviceOffload{name: file.Name()}
-	tun.offloads, err = offloads.NewOffloads(file)
+	if tun.offloads, err = offloads.NewOffloads(file); err != nil {
+		err = fmt.Errorf("open device: %w", err)
+		return
+	}
+
 	return
 }
 
