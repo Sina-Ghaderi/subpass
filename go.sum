@@ -1,6 +1,6 @@
 github.com/sina-ghaderi/tcpip v1.0.1 h1:ZXXvegW930iKxUUAALbDPxpR9lBQG6x9BzM9V4COq50=
 github.com/sina-ghaderi/tcpip v1.0.1/go.mod h1:QRRg0q7yx3QhmvFUjC3MYkcq+hZti7L5LvllztpT53c=
-github.com/sina-ghaderi/virtio v0.0.4 h1:PwdCo2YmoWg3r51X0SAdtPLGkdJGXVlVEVLbb6s7OP8=
-github.com/sina-ghaderi/virtio v0.0.4/go.mod h1:lv6Jrxqh7jS7YWVtWqD6M7GWz2ZBtacQkD8onE4YWyg=
+github.com/sina-ghaderi/virtio v0.0.5 h1:CwzUsaDm+ub4nqQ6FoOuogTO4t4UnyWa2KJLeSsz/5I=
+github.com/sina-ghaderi/virtio v0.0.5/go.mod h1:lv6Jrxqh7jS7YWVtWqD6M7GWz2ZBtacQkD8onE4YWyg=
 golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
 golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
